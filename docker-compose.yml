@@ -1,0 +1,123 @@
+services:
+  # MongoDB数据库
+  mongodb:
+    image: mongo:7.0
+    container_name: donhauser-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: donhauser
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - donhauser-network
+
+  # 后端API服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: donhauser-backend
+    restart: unless-stopped
+    # 开发工具需要 root 权限访问 docker.sock
+    user: root
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongodb:27017/donhauser
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongodb
+    volumes:
+      - backend_uploads:/app/uploads
+      # 开发工具: 挂载 docker.sock 和脚本以支持热重载
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./rebuild-frontend.sh:/app/scripts/rebuild-frontend.sh:ro
+      - ./quick-start.sh:/app/scripts/quick-start.sh:ro
+      - ./docker-compose.yml:/app/scripts/docker-compose.yml:ro
+    networks:
+      - donhauser-network
+    healthcheck:
+      test: [ "CMD", "node", "healthcheck.js" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Mongo Express - MongoDB 数据库可视化工具
+  mongo-express:
+    image: mongo-express:latest
+    container_name: donhauser-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      # MongoDB连接配置
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: 'true'
+
+      # Web界面配置
+      ME_CONFIG_BASICAUTH_USERNAME: aiden
+      ME_CONFIG_BASICAUTH_PASSWORD: 633234001
+      ME_CONFIG_SITE_BASEURL: /
+
+      # 可选：指定默认数据库
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ''
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ''
+
+      # 界面定制
+      ME_CONFIG_OPTIONS_EDITORTHEME: default
+      ME_CONFIG_REQUEST_SIZE: 100kb
+    depends_on:
+      - mongodb
+    networks:
+      - donhauser-network
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # 前端Web服务 (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: donhauser-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3000/api
+      - INTERNAL_API_URL=http://backend:3000
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    networks:
+      - donhauser-network
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# 数据卷
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  backend_uploads:
+    driver: local
+
+# 网络
+networks:
+  donhauser-network:
+    driver: bridge

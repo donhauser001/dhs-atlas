@@ -1,0 +1,1219 @@
+import EmailSettingService from './EmailSettingService'
+import formService from './FormService'
+import { IForm } from '../models/Form'
+import { IFormData } from '../models/FormData'
+import { NotificationTemplate } from '../models/Form'
+import path from 'path'
+import fs from 'fs'
+
+interface PlaceholderData {
+    // 基本信息
+    form_title?: string
+    form_description?: string
+    submission_id?: string
+    submission_date?: string
+    submission_time?: string
+
+    // 提交者信息
+    submitter_ip?: string
+    submitter_email?: string
+    submitter_name?: string
+    submitter_username?: string
+    submitter_company?: string
+    submitter_enterprise?: string
+    submitter_department?: string
+    submitter_position?: string
+    submitter_phone?: string
+    submitter_role?: string
+
+    // 系统信息
+    admin_email?: string
+    site_title?: string
+    site_url?: string
+
+    // 动态字段（表单组件数据）
+    [key: string]: any
+}
+
+class FormNotificationService {
+
+    /**
+     * 处理表单提交时的邮件通知
+     */
+    async handleFormSubmissionNotification(
+        formData: IFormData,
+        form: IForm,
+        submitterInfo?: any,
+        requestInfo?: any
+    ): Promise<void> {
+        console.log('🚨🚨🚨 FormNotificationService.handleFormSubmissionNotification 被调用!');
+        console.log('🚨 formData._id:', formData._id);
+        console.log('🚨 form.name:', form.name);
+        try {
+            // 检查表单是否配置了通知模板
+            const notificationTemplates = form.settings?.notification?.templates
+            if (!notificationTemplates || notificationTemplates.length === 0) {
+                console.log('表单未配置通知模板，跳过邮件发送')
+                return
+            }
+
+            // 过滤出启用的且包含'submit'触发条件的模板
+            const submitTemplates = notificationTemplates.filter(
+                template => template.enabled && template.triggers.includes('submit')
+            )
+
+            if (submitTemplates.length === 0) {
+                console.log('没有启用的提交通知模板，跳过邮件发送')
+                return
+            }
+
+            // 构建占位符数据
+            const placeholderData = this.buildPlaceholderData(formData, form, submitterInfo, requestInfo)
+
+            // 发送每个模板的邮件
+            for (const template of submitTemplates) {
+                try {
+                    await this.sendTemplateEmail(template, placeholderData, form, submitterInfo, formData)
+                    console.log(`表单 ${form.name} 的通知模板 ${template.name} 发送成功`)
+                } catch (error) {
+                    console.error(`表单 ${form.name} 的通知模板 ${template.name} 发送失败:`, error)
+                    // 继续发送其他模板，不因为一个模板失败而停止
+                }
+            }
+
+        } catch (error) {
+            console.error('表单通知发送失败:', error)
+            // 邮件发送失败不应该影响表单提交成功
+        }
+    }
+
+    /**
+     * 发送模板邮件
+     */
+    private async sendTemplateEmail(
+        template: NotificationTemplate,
+        placeholderData: PlaceholderData,
+        form: IForm,
+        submitterInfo?: any,
+        formData?: IFormData
+    ): Promise<void> {
+        try {
+            // 替换主题中的占位符
+            const subject = this.replacePlaceholders(template.subject, placeholderData)
+
+            // 替换内容中的占位符
+            const rawContent = this.replacePlaceholders(template.content, placeholderData)
+
+            // 包装邮件内容到1200px容器中
+            const content = this.wrapEmailContent(rawContent)
+
+            // 确定收件人邮箱
+            const recipients = await this.getRecipients(template, submitterInfo)
+
+            if (recipients.length === 0) {
+                console.warn(`模板 ${template.name} 没有有效的收件人邮箱`)
+                return
+            }
+
+            // 处理邮件附件 - 从原始表单数据中提取
+            const attachments = await this.prepareEmailAttachments(placeholderData, form, formData)
+
+            // 发送邮件给每个收件人
+            for (const recipient of recipients) {
+                await EmailSettingService.sendEmail(recipient, subject, content, true, attachments)
+                console.log(`邮件发送成功: ${template.name} -> ${recipient}${attachments.length > 0 ? ` (${attachments.length}个附件)` : ''}`)
+            }
+
+        } catch (error) {
+            console.error(`模板 ${template.name} 邮件发送失败:`, error)
+            throw error
+        }
+    }
+
+    /**
+     * 构建占位符数据
+     */
+    private buildPlaceholderData(
+        formData: IFormData,
+        form: IForm,
+        submitterInfo?: any,
+        requestInfo?: any
+    ): PlaceholderData {
+        const now = new Date()
+
+        const data: PlaceholderData = {
+            // 基本信息
+            form_title: form.name,
+            form_description: form.description || '',
+            submission_id: formData._id?.toString() || 'unknown',
+            submission_date: now.toLocaleDateString('zh-CN'),
+            submission_time: now.toLocaleTimeString('zh-CN'),
+
+            // 提交者信息
+            submitter_name: formData.submitterName || '匿名用户',
+            submitter_ip: requestInfo?.ip || '',
+
+            // 系统信息
+            admin_email: process.env.ADMIN_EMAIL || '',
+            site_title: process.env.SITE_TITLE || '表单系统',
+            site_url: process.env.SITE_URL || 'http://localhost:3000'
+        }
+
+        // 添加提交者详细信息（如果是登录用户）
+        if (submitterInfo) {
+            data.submitter_email = submitterInfo.email || ''
+            data.submitter_username = submitterInfo.username || ''
+            data.submitter_company = submitterInfo.company || ''
+            data.submitter_enterprise = submitterInfo.enterprise || ''
+            data.submitter_department = submitterInfo.department || ''
+            data.submitter_position = submitterInfo.position || ''
+            data.submitter_phone = submitterInfo.phone || ''
+            data.submitter_role = submitterInfo.role || ''
+        }
+
+        // 调试日志：打印表单数据和结构
+        console.log('🔍 邮件通知调试 - 表单基本信息:', {
+            formName: form.name,
+            formId: formData.formId,
+            submissionDataExists: !!formData.submissionData,
+            submissionDataType: typeof formData.submissionData,
+            formContentExists: !!form.content,
+            formContentType: typeof form.content
+        })
+
+        console.log('🔍 邮件通知调试 - 提交数据详情:', {
+            submissionData: formData.submissionData,
+            submissionDataKeys: formData.submissionData ? Object.keys(formData.submissionData) : [],
+        })
+
+        console.log('🔍 邮件通知调试 - 表单内容结构:', {
+            formContent: form.content,
+            hasComponents: !!(form.content && form.content.components),
+            componentsCount: form.content?.components?.length || 0
+        })
+
+        // 🔥 新方案：直接使用前端的渲染逻辑生成邮件内容
+        if (formData.submissionData && typeof formData.submissionData === 'object') {
+            console.log('🔍 邮件通知调试 - 开始生成表单数据展示内容')
+
+            // 直接处理前端格式的提交数据，生成可读的内容
+            const formattedContent = this.generateFormattedContent(formData.submissionData)
+            console.log('🔍 生成的格式化内容:', formattedContent)
+
+            // 将格式化内容作为一个整体占位符添加
+            data['form_data'] = formattedContent
+
+            // 🎯 同时为每个组件标签生成单独的占位符（兼容旧邮件模板）
+            for (const [componentId, componentData] of Object.entries(formData.submissionData)) {
+                if (componentData && typeof componentData === 'object' && 'value' in componentData) {
+                    const { value, label, type } = componentData as any
+
+                    // 跳过空值
+                    if (this.isEmpty(value)) {
+                        continue
+                    }
+
+                    // 🔥 排除图片展示字段和倒计时字段
+                    if (type === 'image' || type === 'countdown') {
+                        console.log(`🚫 跳过组件占位符: ${type} - ${label}`)
+                        continue
+                    }
+
+                    // 🔥 特殊处理组件：直接生成HTML
+                    let formattedValue;
+                    if (type === 'order' && Array.isArray(value)) {
+                        console.log(`🔍 处理订单组件占位符 ${label}:`, { type, valueType: typeof value, isArray: Array.isArray(value), firstItem: value[0] });
+                        formattedValue = this.generateOrderTable(value);
+                        console.log(`✅ 订单组件占位符 ${label} 生成HTML表格成功`);
+                    } else if (type === 'upload' && Array.isArray(value)) {
+                        console.log(`🔍 处理文件上传组件占位符 ${label}:`, { type, valueType: typeof value, isArray: Array.isArray(value), firstItem: value[0] });
+                        formattedValue = this.generateFileList(value);
+                        console.log(`✅ 文件上传组件占位符 ${label} 生成HTML列表成功`);
+                    } else if (type === 'quotation' && value && typeof value === 'object') {
+                        console.log(`🔍 处理报价单组件占位符 ${label}:`, { type, valueType: typeof value, hasServices: !!(value.services) });
+
+                        // 🔥 为报价单生成两种专用占位符
+                        // 1. 报价单名称占位符
+                        const nameKey = this.labelToPlaceholder(label + '名称');
+                        const nameValue = value.name || '未知报价单';
+                        data[nameKey] = nameValue;
+                        console.log(`✅ 添加报价单名称占位符: {${nameKey}} = "${nameValue}"`);
+
+                        // 2. 报价单内容占位符
+                        const contentKey = this.labelToPlaceholder(label + '内容');
+                        const contentValue = this.generateQuotationTable(value);
+                        data[contentKey] = contentValue;
+                        console.log(`✅ 添加报价单内容占位符: {${contentKey}} = HTML表格`);
+
+                        // 🔥 报价单组件不生成默认占位符，跳过
+                        continue;
+                    } else {
+                        formattedValue = this.formatValueForEmail(value, type);
+                    }
+
+                    if (formattedValue !== undefined) {
+                        const placeholderKey = this.labelToPlaceholder(label)
+                        data[placeholderKey] = formattedValue
+
+                        console.log(`🔍 添加组件占位符: {${placeholderKey}} = "${formattedValue.substring(0, 100)}..."`)
+                    }
+                }
+            }
+
+            console.log('🔍 邮件通知调试 - 完成添加表单数据内容，最终占位符数据:', data)
+        } else {
+            console.log('⚠️ 邮件通知调试 - 跳过表单数据：submissionData不存在或不是对象')
+        }
+
+        return data
+    }
+
+    /**
+     * 生成格式化的表单内容（类似前端的渲染逻辑）
+     */
+    private generateFormattedContent(submissionData: any): string {
+        const lines: string[] = []
+
+        for (const [componentId, componentData] of Object.entries(submissionData)) {
+            if (componentData && typeof componentData === 'object' && 'value' in componentData) {
+                const { value, label, type } = componentData as any
+
+                // 跳过空值
+                if (this.isEmpty(value)) {
+                    continue
+                }
+
+                // 🔥 排除图片展示字段和倒计时字段
+                if (type === 'image' || type === 'countdown') {
+                    continue
+                }
+
+                // 🔥 特殊处理组件：直接处理原始数组数据
+                if (type === 'order' && Array.isArray(value)) {
+                    console.log(`🔍 格式化订单字段 ${label}:`, { type, valueType: typeof value, isArray: Array.isArray(value), firstItem: value[0] });
+                    const tableHtml = this.generateOrderTable(value);
+                    console.log(`✅ 订单字段 ${label} 生成HTML表格成功`);
+                    lines.push(`${label}: ${tableHtml}`);
+                } else if (type === 'upload' && Array.isArray(value)) {
+                    console.log(`🔍 格式化文件上传字段 ${label}:`, { type, valueType: typeof value, isArray: Array.isArray(value), firstItem: value[0] });
+                    const fileListHtml = this.generateFileList(value);
+                    console.log(`✅ 文件上传字段 ${label} 生成HTML列表成功`);
+                    lines.push(`${label}: ${fileListHtml}`);
+                } else if (type === 'quotation' && value && typeof value === 'object') {
+                    console.log(`🔍 格式化报价单字段 ${label}:`, { type, valueType: typeof value, hasServices: !!(value.services) });
+                    // 🔥 报价单在整体内容中只显示名称，详细内容通过专用占位符获取
+                    const quotationName = value.name || '未知报价单';
+                    console.log(`✅ 报价单字段 ${label} 显示名称: ${quotationName}`);
+                    lines.push(`${label}: ${quotationName}`);
+                } else {
+                    const formattedValue = this.formatValueForEmail(value, type)
+                    console.log(`🔍 格式化字段 ${label} (${type}):`, { value, formattedValue: formattedValue.substring(0, 100) + '...' });
+                    lines.push(`${label}: ${formattedValue}`);
+                }
+            } else {
+                // 处理简单格式的数据
+                const formattedValue = this.formatValueForEmail(componentData, 'text')
+                lines.push(`${componentId}: ${formattedValue}`)
+            }
+        }
+
+        return lines.join('\n')
+    }
+
+    /**
+     * 格式化值用于邮件显示（类似前端的 formatValue 函数）
+     */
+    private formatValueForEmail(val: any, type: string): string {
+        // 检查空值
+        if (this.isEmpty(val)) {
+            return '(空)'
+        }
+
+        // 处理数组
+        if (Array.isArray(val)) {
+            if (val.length === 0) {
+                return '(空列表)'
+            }
+
+            // 🔥 特殊处理：检查是否是文件上传数组数据
+            if (val.length > 0 && val[0] && typeof val[0] === 'object') {
+                const firstItem = val[0];
+
+                // 检查是否是文件对象（包含 name, size, type 等文件属性）
+                if (firstItem.name && (firstItem.size !== undefined || firstItem.type)) {
+                    console.log('✅ 检测到文件上传数据，生成文件列表');
+                    return this.generateFileList(val);
+                }
+
+                // 检查是否是订单数组数据
+                console.log('🔍 检查订单数组数据:', {
+                    hasServiceName: !!(firstItem.serviceName || firstItem['服务名称']),
+                    hasUnitPrice: !!(firstItem.unitPrice || firstItem['单价']),
+                    hasQuantity: !!(firstItem.quantity || firstItem['数量']),
+                    firstItem: firstItem
+                });
+
+                if ((firstItem.serviceName || firstItem['服务名称']) &&
+                    (firstItem.unitPrice || firstItem['单价']) &&
+                    (firstItem.quantity || firstItem['数量'])) {
+                    console.log('✅ 检测到订单数据，生成HTML表格');
+                    return this.generateOrderTable(val);
+                }
+            }
+
+            // 如果数组包含对象，格式化显示
+            if (typeof val[0] === 'object') {
+                return val.map(item => {
+                    if (item && typeof item === 'object') {
+                        return Object.entries(item)
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(', ')
+                    }
+                    return String(item)
+                }).join('; ')
+            }
+
+            // 普通数组（如选择按钮的值）
+            return val.join(', ')
+        }
+
+        // 处理复杂对象
+        if (typeof val === 'object' && val !== null) {
+            // 检查是否是特殊对象格式
+            if (val.name || val.title) {
+                return val.name || val.title
+            }
+
+            // 🔥 特殊处理：如果是订单数组数据，生成HTML表格
+            if (Array.isArray(val) && val.length > 0 && val[0] && typeof val[0] === 'object') {
+                // 检查是否包含订单项的典型字段
+                const firstItem = val[0];
+                if ((firstItem.serviceName || firstItem['服务名称']) &&
+                    (firstItem.unitPrice || firstItem['单价']) &&
+                    (firstItem.quantity || firstItem['数量'])) {
+                    return this.generateOrderTable(val);
+                }
+            }
+
+            // 通用对象格式化
+            return Object.entries(val)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(', ')
+        }
+
+        // 根据类型特殊处理
+        switch (type) {
+            case 'date':
+                return new Date(val).toLocaleDateString('zh-CN')
+
+            case 'textarea':
+            case 'presetText':
+            case 'instruction':
+            case 'articleContent':
+                // 保持换行格式
+                return String(val).replace(/\n/g, '\n')
+
+            case 'checkbox':
+                return val ? '是' : '否'
+
+            case 'slider':
+                return `${val} 分`
+
+            default:
+                return String(val)
+        }
+    }
+
+    /**
+     * 检查值是否为空
+     */
+    private isEmpty(val: any): boolean {
+        return val === null ||
+            val === undefined ||
+            val === '' ||
+            (Array.isArray(val) && val.length === 0) ||
+            (typeof val === 'object' && val !== null && Object.keys(val).length === 0)
+    }
+
+    /**
+     * 生成文件列表HTML
+     */
+    private generateFileList(files: any[]): string {
+        if (!Array.isArray(files) || files.length === 0) {
+            return '暂无文件';
+        }
+
+        // 生成文件列表HTML - 适应邮件容器宽度
+        let fileListHtml = `
+<div style="width: 100%; margin: 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12); overflow: hidden; border: 1px solid #e8e8e8;">
+    <div style="padding: 28px 40px 24px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-bottom: 1px solid #e8e8e8;">
+        <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px;">附件文件</h3>
+        <p style="margin: 6px 0 0; font-size: 14px; color: #666; font-weight: 400; opacity: 0.8;">File Attachments · 共 ${files.length} 个文件 · 已作为邮件附件发送</p>
+    </div>
+    <div style="padding: 0;">`;
+
+        files.forEach((file, index) => {
+            if (file && typeof file === 'object') {
+                const fileName = file.name || '未知文件';
+                const fileSize = file.size ? (file.size / 1024 / 1024).toFixed(2) : '0';
+                const fileType = file.type || '';
+
+                // 根据文件类型获取线性SVG图标（内联SVG更兼容邮件客户端）
+                let svgIcon = '';
+                if (fileType.startsWith('image/')) {
+                    svgIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>';
+                } else if (fileType.includes('pdf')) {
+                    svgIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d32f2f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>';
+                } else if (fileType.includes('word') || fileType.includes('document')) {
+                    svgIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1976d2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+                } else if (fileType.includes('excel') || fileType.includes('spreadsheet')) {
+                    svgIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#388e3c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><path d="M8,13h8"/><path d="M8,17h8"/><path d="M8,9h2"/></svg>';
+                } else if (fileType.includes('powerpoint') || fileType.includes('presentation')) {
+                    svgIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f57c00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><path d="M9,17v-4h3a2 2 0 0 0 0-4H9"/></svg>';
+                } else if (fileType.includes('zip') || fileType.includes('archive')) {
+                    svgIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#795548" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21,8 21,21 3,21 3,8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>';
+                } else {
+                    // 默认文档图标
+                    svgIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>';
+                }
+
+                // 文件行样式
+                const borderBottom = index < files.length - 1 ? 'border-bottom: 1px solid #f5f5f5;' : '';
+
+                fileListHtml += `
+        <div style="padding: 24px 40px; display: flex; align-items: center; ${borderBottom} transition: background-color 0.2s ease;">
+            <div style="width: 24px; height: 24px; margin-right: 20px; display: flex; align-items: center; justify-content: center;">
+                ${svgIcon}
+            </div>
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 14px; font-weight: 500; color: #1a1a1a; line-height: 1.4; word-break: break-all; margin-bottom: 6px;">${fileName}</div>
+                <div style="font-size: 14px; color: #888; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; letter-spacing: 0.5px;">${fileSize} MB</div>
+            </div>
+        </div>`;
+            }
+        });
+
+        fileListHtml += `
+    </div>
+</div>`;
+
+        return fileListHtml;
+    }
+
+    /**
+     * 生成报价单HTML表格
+     */
+    private generateQuotationTable(quotationData: any): string {
+        if (!quotationData || typeof quotationData !== 'object') {
+            return '暂无报价单数据';
+        }
+
+        const quotationName = quotationData.name || '未知报价单';
+        const services = quotationData.services || [];
+        const totalAmount = quotationData.totalAmount || 0;
+        const description = quotationData.description || '';
+
+        if (!Array.isArray(services) || services.length === 0) {
+            return `
+<div style="width: 100%; margin: 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12); overflow: hidden; border: 1px solid #e8e8e8;">
+    <div style="padding: 28px 40px 24px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-bottom: 1px solid #e8e8e8;">
+        <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px;">${quotationName}</h3>
+        <p style="margin: 6px 0 0; font-size: 14px; color: #666; font-weight: 400; opacity: 0.8;">Quotation Details · 暂无服务项目</p>
+    </div>
+    <div style="padding: 40px; text-align: center; color: #999;">
+        <p style="margin: 0; font-size: 14px;">该报价单暂无服务项目</p>
+    </div>
+</div>`;
+        }
+
+        // 生成极简风格的HTML表格卡片 - 适应邮件容器宽度
+        let tableHtml = `
+<div style="width: 100%; margin: 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12); overflow: hidden; border: 1px solid #e8e8e8;">
+    <div style="padding: 28px 40px 24px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-bottom: 1px solid #e8e8e8;">
+        <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px;">${quotationName}</h3>
+        <p style="margin: 6px 0 0; font-size: 14px; color: #666; font-weight: 400; opacity: 0.8;">Quotation Details${description ? ' · ' + description : ''}</p>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; background: #ffffff;">
+        <thead>
+            <tr style="background: #ffffff; border-bottom: 1px solid #f0f0f0;">
+                <th style="padding: 20px 32px; text-align: center; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 50px;">No.</th>
+                <th style="padding: 20px 32px; text-align: left; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px;">服务项目</th>
+                <th style="padding: 20px 32px; text-align: left; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 90px;">分类</th>
+                <th style="padding: 20px 32px; text-align: left; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 120px;">价格说明</th>
+                <th style="padding: 20px 32px; text-align: right; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 100px;">单价</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+        services.forEach((service, index) => {
+            if (service && typeof service === 'object') {
+                const serviceName = service.serviceName || service.name || '未知服务';
+                const category = service.categoryName || service.category || '未分类';
+                const priceDescription = service.renderedPriceDescription || service.priceDescription || service.description || '—';
+                const unitPrice = parseFloat(service.unitPrice || service.price || 0);
+
+                // 极简行样式
+                const isLast = index === services.length - 1;
+                const borderBottom = isLast ? 'none' : '1px solid #f5f5f5';
+
+                tableHtml += `
+            <tr style="border-bottom: ${borderBottom}; transition: background-color 0.2s ease;">
+                <td style="padding: 24px 32px; text-align: center; font-size: 14px; color: #999; font-weight: 500;">${String(index + 1).padStart(2, '0')}</td>
+                <td style="padding: 24px 32px; font-size: 14px; color: #1a1a1a; font-weight: 500; line-height: 1.4;">${serviceName}</td>
+                <td style="padding: 24px 32px; font-size: 13px; color: #666; font-weight: 400;">${category}</td>
+                <td style="padding: 24px 32px; font-size: 13px; color: #666; font-weight: 400; line-height: 1.4; max-width: 200px; word-wrap: break-word;">${priceDescription}</td>
+                <td style="padding: 24px 32px; text-align: right; font-size: 15px; color: #333; font-weight: 500; font-family: 'SF Mono', Monaco, monospace;">¥${unitPrice.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>`;
+            }
+        });
+
+        // 添加总计行
+        tableHtml += `
+        </tbody>
+    </table>
+    <div style="padding: 32px 40px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-top: 1px solid #e8e8e8;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 14px; color: #555; font-weight: 500; margin-bottom: 6px; letter-spacing: 0.5px;">报价总额</div>
+                <div style="font-size: 14px; color: #888; opacity: 0.8;">Total Quotation Amount</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 28px; font-weight: 800; color: #1a1a1a; font-family: 'SF Mono', Monaco, monospace; letter-spacing: -1px;">¥${totalAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div style="font-size: 14px; color: #888; margin-top: 4px; opacity: 0.7;">含税价格</div>
+            </div>
+        </div>
+    </div>
+</div>`;
+
+        return tableHtml;
+    }
+
+    /**
+     * 生成订单HTML表格
+     */
+    private generateOrderTable(orderItems: any[]): string {
+        if (!Array.isArray(orderItems) || orderItems.length === 0) {
+            return '暂无订单项';
+        }
+
+        // 生成极简风格的HTML表格卡片 - 适应邮件容器宽度
+        let tableHtml = `
+<div style="width: 100%; margin: 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12); overflow: hidden; border: 1px solid #e8e8e8;">
+    <div style="padding: 28px 40px 24px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-bottom: 1px solid #e8e8e8;">
+        <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px;">订单明细</h3>
+        <p style="margin: 6px 0 0; font-size: 14px; color: #666; font-weight: 400; opacity: 0.8;">Order Details</p>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; background: #ffffff;">
+        <thead>
+            <tr style="background: #ffffff; border-bottom: 1px solid #f0f0f0;">
+                <th style="padding: 20px 32px; text-align: center; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 50px;">No.</th>
+                <th style="padding: 20px 32px; text-align: left; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px;">服务项目</th>
+                <th style="padding: 20px 32px; text-align: left; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 90px;">分类</th>
+                <th style="padding: 20px 32px; text-align: right; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 100px;">单价</th>
+                <th style="padding: 20px 32px; text-align: center; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 60px;">数量</th>
+                <th style="padding: 20px 32px; text-align: right; font-size: 14px; font-weight: 500; color: #555; text-transform: uppercase; letter-spacing: 1px; width: 120px;">小计</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+        let totalAmount = 0;
+
+        orderItems.forEach((item, index) => {
+            if (item && typeof item === 'object') {
+                const serviceName = item.服务名称 || item.serviceName || '未知服务';
+                const category = item.分类 || item.categoryName || '未分类';
+                const unitPrice = parseFloat(item.单价 || item.unitPrice || 0);
+                const quantity = item.数量 || item.quantity || 0;
+                const unit = item.单位 || item.unit || '项';
+                const subtotal = parseFloat(item.小计 || item.subtotal || 0);
+
+                totalAmount += subtotal;
+
+                // 极简行样式
+                const isLast = index === orderItems.length - 1;
+                const borderBottom = isLast ? 'none' : '1px solid #f5f5f5';
+
+                tableHtml += `
+            <tr style="border-bottom: ${borderBottom}; transition: background-color 0.2s ease;">
+                <td style="padding: 24px 32px; text-align: center; font-size: 14px; color: #999; font-weight: 500;">${String(index + 1).padStart(2, '0')}</td>
+                <td style="padding: 24px 32px; font-size: 14px; color: #1a1a1a; font-weight: 500; line-height: 1.4;">${serviceName}</td>
+                <td style="padding: 24px 32px; font-size: 13p'x; color: #666; font-weight: 400;">${category}</td>
+                <td style="padding: 24px 32px; text-align: right; font-size: 15px; color: #333; font-weight: 500; font-family: 'SF Mono', Monaco, monospace;">¥${unitPrice.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="padding: 24px 32px; text-align: center; font-size: 14px; color: #666; font-weight: 500;">${quantity}<span style="font-size: 12px; color: #999; margin-left: 3px;">${unit}</span></td>
+                <td style="padding: 24px 32px; text-align: right; font-size: 14px; color: #1a1a1a; font-weight: 700; font-family: 'SF Mono', Monaco, monospace;">¥${subtotal.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>`;
+            }
+        });
+
+        // 添加总计行
+        tableHtml += `
+        </tbody>
+    </table>
+    <div style="padding: 32px 40px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-top: 1px solid #e8e8e8;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 14px; color: #555; font-weight: 500; margin-bottom: 6px; letter-spacing: 0.5px;">订单总额</div>
+                <div style="font-size: 14px; color: #888; opacity: 0.8;">Total Amount</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 28px; font-weight: 800; color: #1a1a1a; font-family: 'SF Mono', Monaco, monospace; letter-spacing: -1px;">¥${totalAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div style="font-size: 14px; color: #888; margin-top: 4px; opacity: 0.7;">含税价格</div>
+            </div>
+        </div>
+    </div>
+</div>`;
+
+        return tableHtml;
+    }
+
+    /**
+     * 添加表单字段占位符（保留原方法以防需要）
+     */
+    private addFormFieldPlaceholders(
+        data: PlaceholderData,
+        submissionData: any,
+        formContent: any,
+        componentLabels?: any
+    ): void {
+        try {
+            // 🔥 修复：从表单内容的正确路径提取组件配置
+            // 表单配置结构: { config: { components: [...] } }
+            const components = formContent?.config?.components || formContent?.components || []
+            console.log(`🔍 表单组件分析 - 总组件数: ${components.length}`)
+            console.log(`🔍 表单组件配置路径检查:`, {
+                hasFormContent: !!formContent,
+                hasConfig: !!formContent?.config,
+                hasConfigComponents: !!formContent?.config?.components,
+                hasDirectComponents: !!formContent?.components,
+                configComponentsLength: formContent?.config?.components?.length || 0,
+                directComponentsLength: formContent?.components?.length || 0
+            })
+
+            for (let i = 0; i < components.length; i++) {
+                const component = components[i]
+                const componentId = component.id
+
+                // 🔥 优先使用从前端提交数据中提取的标签，其次使用表单配置中的标签
+                const componentLabel = (componentLabels && componentLabels[componentId]) ||
+                    component.label ||
+                    component.placeholder || ''
+
+                console.log(`🔍 组件[${i}] - ID: ${componentId}, 类型: ${component.type}, 标签: "${componentLabel}"`)
+                console.log(`🔍 组件[${i}] - 标签来源: ${componentLabels && componentLabels[componentId] ? '前端数据' : '表单配置'}`)
+
+                // 跳过不需要生成占位符的组件类型
+                const excludeTypes = ['divider', 'html', 'steps', 'group', 'columnContainer', 'pagination']
+                if (excludeTypes.includes(component.type)) {
+                    console.log(`⏭️ 组件[${i}] - 跳过，类型 ${component.type} 不需要占位符`)
+                    continue
+                }
+
+                // 获取该组件的提交数据
+                const fieldValue = submissionData[componentId]
+                console.log(`🔍 组件[${i}] - 提交数据值:`, fieldValue, `(类型: ${typeof fieldValue})`)
+
+                if (fieldValue !== undefined && fieldValue !== null) {
+                    // 生成占位符键名（基于标签）
+                    const placeholderKey = this.labelToPlaceholder(componentLabel)
+                    console.log(`🔍 组件[${i}] - 生成占位符键名: "${placeholderKey}" (从标签: "${componentLabel}")`)
+
+                    // 格式化字段值
+                    const formattedValue = this.formatFieldValue(fieldValue, component.type)
+                    data[placeholderKey] = formattedValue
+                    console.log(`✅ 组件[${i}] - 添加占位符: {${placeholderKey}} = "${formattedValue}"`)
+                } else {
+                    console.log(`⚠️ 组件[${i}] - 跳过，提交数据为空或未定义`)
+                }
+            }
+
+            console.log('🔍 最终生成的所有占位符键名:', Object.keys(data).filter(key =>
+                !['form_title', 'form_description', 'submission_id', 'submission_date', 'submission_time',
+                    'submitter_name', 'submitter_ip', 'submitter_email', 'submitter_username', 'submitter_company',
+                    'submitter_enterprise', 'submitter_department', 'submitter_position', 'submitter_phone',
+                    'submitter_role', 'admin_email', 'site_title', 'site_url'].includes(key)
+            ))
+        } catch (error) {
+            console.error('❌ 添加表单字段占位符失败:', error)
+        }
+    }
+
+    /**
+     * 将标签转换为占位符格式
+     */
+    private labelToPlaceholder(label: string): string {
+        // 🔥 修复：保持中文的原始大小写，只对英文进行小写转换
+        return label
+            .replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '')  // 只保留中文、英文、数字
+            .replace(/[a-zA-Z]/g, (match) => match.toLowerCase())  // 只对英文字母转小写，保持中文不变
+    }
+
+    /**
+     * 格式化字段值
+     */
+    private formatFieldValue(value: any, componentType: string): string {
+        if (value === null || value === undefined) {
+            return ''
+        }
+
+        switch (componentType) {
+            case 'checkbox':
+                // 复选框返回选中的选项
+                if (Array.isArray(value)) {
+                    return value.join(', ')
+                }
+                return String(value)
+
+            case 'upload':
+                // 文件上传返回文件名列表
+                if (Array.isArray(value)) {
+                    return value.map(file => {
+                        if (file && typeof file === 'object') {
+                            const fileName = file.name || file.originalname || '未知文件'
+                            const fileSize = file.size ? ` (${(file.size / 1024 / 1024).toFixed(2)}MB)` : ''
+                            return `${fileName}${fileSize}`
+                        }
+                        return String(file)
+                    }).join('、')
+                }
+                return String(value)
+
+            case 'date':
+                // 日期格式化
+                if (value instanceof Date) {
+                    return value.toLocaleDateString('zh-CN')
+                }
+                return String(value)
+
+            case 'amount':
+                // 金额格式化
+                if (typeof value === 'number') {
+                    return `¥${value.toFixed(2)}`
+                }
+                return String(value)
+
+
+
+            case 'order':
+                // 订单格式化 - 生成HTML表格
+                if (Array.isArray(value)) {
+                    if (value.length === 0) {
+                        return '暂无订单项';
+                    }
+
+                    // 生成HTML表格
+                    let tableHtml = `
+<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <thead>
+        <tr style="background-color: #f5f5f5; border-bottom: 2px solid #e0e0e0;">
+            <th style="padding: 12px 8px; text-align: left; border: 1px solid #e0e0e0; font-weight: 500; color: #333;">序号</th>
+            <th style="padding: 12px 8px; text-align: left; border: 1px solid #e0e0e0; font-weight: 500; color: #333;">服务名称</th>
+            <th style="padding: 12px 8px; text-align: left; border: 1px solid #e0e0e0; font-weight: 500; color: #333;">分类</th>
+            <th style="padding: 12px 8px; text-align: right; border: 1px solid #e0e0e0; font-weight: 500; color: #333;">单价</th>
+            <th style="padding: 12px 8px; text-align: center; border: 1px solid #e0e0e0; font-weight: 500; color: #333;">数量</th>
+            <th style="padding: 12px 8px; text-align: right; border: 1px solid #e0e0e0; font-weight: 500; color: #333;">小计</th>
+        </tr>
+    </thead>
+    <tbody>`;
+
+                    let totalAmount = 0;
+
+                    value.forEach((item, index) => {
+                        if (item && typeof item === 'object') {
+                            const serviceName = item.服务名称 || item.serviceName || '未知服务';
+                            const category = item.分类 || item.categoryName || '未分类';
+                            const unitPrice = item.单价 || item.unitPrice || 0;
+                            const quantity = item.数量 || item.quantity || 0;
+                            const unit = item.单位 || item.unit || '项';
+                            const subtotal = item.小计 || item.subtotal || 0;
+
+                            totalAmount += parseFloat(subtotal) || 0;
+
+                            // 行样式 - 交替背景色
+                            const rowBg = index % 2 === 0 ? '#ffffff' : '#fafafa';
+
+                            tableHtml += `
+        <tr style="background-color: ${rowBg};">
+            <td style="padding: 10px 8px; border: 1px solid #e0e0e0; text-align: center; color: #666;">${index + 1}</td>
+            <td style="padding: 10px 8px; border: 1px solid #e0e0e0; color: #333; font-weight: 500;">${serviceName}</td>
+            <td style="padding: 10px 8px; border: 1px solid #e0e0e0; color: #666;">${category}</td>
+            <td style="padding: 10px 8px; border: 1px solid #e0e0e0; text-align: right; color: #333;">¥${parseFloat(unitPrice).toFixed(2)}</td>
+            <td style="padding: 10px 8px; border: 1px solid #e0e0e0; text-align: center; color: #333;">${quantity}${unit}</td>
+            <td style="padding: 10px 8px; border: 1px solid #e0e0e0; text-align: right; color: #333; font-weight: 500;">¥${parseFloat(subtotal).toFixed(2)}</td>
+        </tr>`;
+                        }
+                    });
+
+                    // 添加总计行
+                    tableHtml += `
+        <tr style="background-color: #f0f8ff; border-top: 2px solid #1890ff;">
+            <td colspan="5" style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: right; font-weight: 500; color: #333; font-size: 14px;">总计：</td>
+            <td style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: right; font-weight: 500; color: #1890ff; font-size: 14px;">¥${totalAmount.toFixed(2)}</td>
+        </tr>
+    </tbody>
+</table>`;
+
+                    return tableHtml;
+                }
+                return String(value)
+
+            default:
+                // 其他类型直接转字符串
+                if (typeof value === 'object') {
+                    return JSON.stringify(value)
+                }
+                return String(value)
+        }
+    }
+
+    /**
+     * 包装邮件内容到1200px容器中
+     */
+    private wrapEmailContent(content: string): string {
+        return `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>表单通知</title>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            min-height: 100vh;
+        }
+        .email-container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background-color: #ffffff; 
+            box-shadow: 0 16px 64px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-top: 40px;
+            margin-bottom: 40px;
+        }
+        .email-content { 
+            padding: 60px 80px; 
+            line-height: 1.7; 
+            color: #333; 
+            font-size: 14px;
+        }
+        
+
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .email-container { 
+                margin: 20px; 
+                border-radius: 12px; 
+            }
+            .email-content { 
+                padding: 40px 32px; 
+                font-size: 15px;
+            }
+        }
+        @media (max-width: 480px) {
+            .email-container { 
+                margin: 10px; 
+                border-radius: 8px; 
+            }
+            .email-content { 
+                padding: 24px 20px; 
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-content">
+            ${content}
+        </div>
+    </div>
+</body>
+</html>`;
+    }
+
+    /**
+* 准备邮件附件
+*/
+    private async prepareEmailAttachments(data: PlaceholderData, form?: IForm, formData?: IFormData): Promise<any[]> {
+        const attachments: any[] = [];
+
+        try {
+            console.log('🔍 开始准备邮件附件，检查原始表单数据');
+
+            // 如果有原始表单数据，直接从中提取文件信息
+            if (formData && formData.submissionData) {
+                console.log('🔍 从原始表单数据中查找文件组件');
+
+                // 遍历原始提交数据
+                for (const [componentId, componentData] of Object.entries(formData.submissionData)) {
+                    if (componentData && typeof componentData === 'object' && 'type' in componentData) {
+                        const { type, value } = componentData as any;
+
+                        console.log(`🔍 检查组件 ${componentId} (${type}):`, {
+                            type,
+                            valueType: typeof value,
+                            isArray: Array.isArray(value),
+                            length: Array.isArray(value) ? value.length : 'N/A'
+                        });
+
+                        // 检查是否是文件上传组件
+                        if (type === 'upload' && Array.isArray(value) && value.length > 0) {
+                            console.log(`📎 发现文件上传组件: ${componentId}, 文件数量: ${value.length}`);
+                            console.log(`📎 文件数据:`, value);
+
+                            // 处理每个文件
+                            for (const file of value) {
+                                try {
+                                    const attachment = await this.createEmailAttachment(file);
+                                    if (attachment) {
+                                        attachments.push(attachment);
+                                    }
+                                } catch (error) {
+                                    console.error(`处理文件附件失败: ${file.name || 'unknown'}`, error);
+                                    // 继续处理其他文件，不因为一个文件失败而停止
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                console.log('🔍 原始表单数据不可用，回退到占位符数据检查');
+
+                // 回退到原来的逻辑（检查占位符数据）
+                for (const [key, value] of Object.entries(data)) {
+                    if (Array.isArray(value) && value.length > 0) {
+                        const firstItem = value[0];
+                        if (firstItem && typeof firstItem === 'object' && firstItem.name && firstItem.size && firstItem.url) {
+                            console.log(`📎 发现文件上传字段: ${key}, 文件数量: ${value.length}`);
+
+                            for (const file of value) {
+                                try {
+                                    const attachment = await this.createEmailAttachment(file);
+                                    if (attachment) {
+                                        attachments.push(attachment);
+                                    }
+                                } catch (error) {
+                                    console.error(`处理文件附件失败: ${file.name}`, error);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (attachments.length > 0) {
+                console.log(`✅ 成功准备 ${attachments.length} 个邮件附件`);
+            }
+
+        } catch (error) {
+            console.error('准备邮件附件时出错:', error);
+            // 不抛出错误，允许邮件发送继续进行，即使没有附件
+        }
+
+        return attachments;
+    }
+
+    /**
+     * 创建单个邮件附件
+     */
+    private async createEmailAttachment(fileData: any): Promise<any | null> {
+        try {
+            const fileName = fileData.name || fileData.originalname;
+            // 文件URL可能在不同的位置，优先检查response.data.url
+            const fileUrl = fileData.url || (fileData.response && fileData.response.data && fileData.response.data.url);
+
+            console.log('🔍 创建邮件附件 - 文件信息:', {
+                fileName,
+                fileUrl,
+                hasResponse: !!fileData.response,
+                responseData: fileData.response?.data
+            });
+
+            if (!fileName || !fileUrl) {
+                console.warn('文件信息不完整，跳过:', {
+                    fileName,
+                    fileUrl,
+                    fileData: JSON.stringify(fileData, null, 2)
+                });
+                return null;
+            }
+
+            // 从URL构建文件路径
+            // URL格式通常是: /uploads/forms/general/filename 或 /uploads/forms/{formId}/filename
+            const relativePath = fileUrl.startsWith('/') ? fileUrl.substring(1) : fileUrl;
+            const filePath = path.join(__dirname, '../../', relativePath);
+
+            // 检查文件是否存在
+            if (!fs.existsSync(filePath)) {
+                console.warn(`文件不存在，跳过: ${filePath}`);
+                return null;
+            }
+
+            // 获取文件统计信息
+            const stats = fs.statSync(filePath);
+            if (!stats.isFile()) {
+                console.warn(`路径不是文件，跳过: ${filePath}`);
+                return null;
+            }
+
+            console.log(`📎 准备附件: ${fileName} (${(stats.size / 1024 / 1024).toFixed(2)}MB)`);
+
+            // 创建nodemailer附件对象
+            return {
+                filename: fileName,
+                path: filePath,
+                cid: `attachment_${Date.now()}_${Math.random().toString(36).substring(7)}` // 可选的Content-ID
+            };
+
+        } catch (error) {
+            console.error('创建邮件附件失败:', error);
+            return null;
+        }
+    }
+
+    /**
+     * 替换占位符
+     */
+    private replacePlaceholders(template: string, data: PlaceholderData): string {
+        console.log('🔍 占位符替换开始 - 模板内容:', template)
+        console.log('🔍 占位符替换 - 可用数据:', data)
+
+        let result = template
+
+        // 替换所有占位符 {key}
+        for (const [key, value] of Object.entries(data)) {
+            const placeholder = `{${key}}`
+            const replacement = String(value || '')
+
+            // 检查模板中是否包含这个占位符
+            if (template.includes(placeholder)) {
+                console.log(`✅ 占位符替换: "${placeholder}" -> "${replacement}"`)
+                result = result.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), replacement)
+            }
+        }
+
+        console.log('🔍 占位符替换结果:', result)
+        return result
+    }
+
+    /**
+     * 获取收件人邮箱列表
+     */
+    private async getRecipients(template: NotificationTemplate, submitterInfo?: any): Promise<string[]> {
+        const recipients: string[] = []
+
+        switch (template.to) {
+            case 'admin':
+                try {
+                    // 从邮件设置中获取管理员邮箱
+                    const emailSetting = await EmailSettingService.getEmailSetting()
+                    console.log('获取到的邮件设置:', {
+                        senderEmail: emailSetting?.senderEmail,
+                        replyEmail: emailSetting?.replyEmail,
+                        senderName: emailSetting?.senderName
+                    })
+                    if (emailSetting?.senderEmail) {
+                        recipients.push(emailSetting.senderEmail)
+                        console.log(`使用系统配置的发件人邮箱作为管理员邮箱: ${emailSetting.senderEmail}`)
+                    }
+                } catch (error) {
+                    console.error('获取邮件设置失败，尝试使用环境变量:', error)
+                    // 备用方案：使用环境变量
+                    const adminEmail = process.env.ADMIN_EMAIL
+                    if (adminEmail) {
+                        recipients.push(adminEmail)
+                        console.log(`使用环境变量管理员邮箱: ${adminEmail}`)
+                    }
+                }
+                break
+
+            case 'submitter':
+                const submitterEmail = submitterInfo?.email
+                if (submitterEmail) {
+                    recipients.push(submitterEmail)
+                }
+                break
+
+            case 'custom':
+                if (template.customEmails) {
+                    const emails = template.customEmails
+                        .split(',')
+                        .map(email => email.trim())
+                        .filter(email => this.isValidEmail(email))
+                    recipients.push(...emails)
+                }
+                break
+        }
+
+        return recipients
+    }
+
+    /**
+     * 验证邮箱格式
+     */
+    private isValidEmail(email: string): boolean {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        return emailRegex.test(email)
+    }
+
+    /**
+     * 测试发送通知模板
+     */
+    async testNotificationTemplate(
+        templateId: string,
+        formId: string,
+        testEmail: string
+    ): Promise<void> {
+        try {
+            const form = await formService.getFormById(formId)
+            if (!form) {
+                throw new Error('表单不存在')
+            }
+
+            const template = form.settings?.notification?.templates?.find(
+                t => t.id === templateId
+            )
+            if (!template) {
+                throw new Error('通知模板不存在')
+            }
+
+            // 构建测试占位符数据
+            const testPlaceholderData: PlaceholderData = {
+                form_title: form.name,
+                form_description: form.description || '',
+                submission_id: 'TEST_SUBMISSION_ID',
+                submission_date: new Date().toLocaleDateString('zh-CN'),
+                submission_time: new Date().toLocaleTimeString('zh-CN'),
+                submitter_name: '测试用户',
+                submitter_email: testEmail,
+                submitter_ip: '192.168.1.100',
+                admin_email: process.env.ADMIN_EMAIL || '',
+                site_title: process.env.SITE_TITLE || '表单系统',
+                site_url: process.env.SITE_URL || 'http://localhost:3000',
+                // 添加一些示例字段数据
+                '姓名': '张三',
+                '电话': '13800138000',
+                '邮箱': testEmail,
+                '公司': '测试公司'
+            }
+
+            // 替换占位符
+            const subject = this.replacePlaceholders(template.subject, testPlaceholderData)
+            const content = this.replacePlaceholders(template.content, testPlaceholderData)
+
+            // 发送测试邮件
+            await EmailSettingService.sendEmail(testEmail, `[测试] ${subject}`, content, true)
+
+        } catch (error) {
+            console.error('测试邮件发送失败:', error)
+            throw error
+        }
+    }
+}
+
+export default new FormNotificationService()

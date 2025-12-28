@@ -1,14 +1,9 @@
 # OS
 .DS_Store
 
-# Env - 敏感配置文件 (不要提交!)
+# Env
 .env
 .env.local
-.env.*.local
-*.pem
-*.key
-
-# 注意: .env.example 是模板文件，应该提交到 Git
 
 # Dependencies
 node_modules/
@@ -37,46 +32,3 @@ frontend/node_modules/.vite/
 
 # Uploads & runtime files
 backend/uploads/
-frontend/uploads/
-uploads/
-**/uploads/
-
-# Backup files
-backup_*/
-backups/
-*.backup
-*.bak
-
-# Deploy packages (generated)
-deploy-package/
-
-# MongoDB dumps
-mongodb-backup/
-*.bson
-*.metadata.json
-
-# Large binary files
-*.pdf
-*.zip
-*.tar.gz
-*.rar
-*.7z
-
-# Media files (should use external storage)
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.bmp
-*.tif
-*.tiff
-*.webp
-*.mp4
-*.mov
-*.avi
-
-# Temp files
-*.tmp
-*.temp
-*.swp
-*~

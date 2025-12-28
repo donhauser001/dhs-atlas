@@ -1,0 +1,307 @@
+/* TipTap 富文本编辑器样式 */
+
+/* 占位符样式 */
+.tiptap p.is-editor-empty:first-child::before {
+  color: hsl(var(--muted-foreground));
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* 编辑器基础样式 */
+.tiptap {
+  outline: none;
+}
+
+.tiptap:focus {
+  outline: none;
+}
+
+/* 列表样式 */
+.tiptap ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.tiptap ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.tiptap li {
+  margin: 0.25em 0;
+}
+
+.tiptap li p {
+  margin: 0;
+}
+
+/* 标题样式 */
+.tiptap h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0.75em 0 0.5em;
+}
+
+.tiptap h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0.75em 0 0.5em;
+}
+
+.tiptap h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.75em 0 0.5em;
+}
+
+.tiptap h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0.75em 0 0.5em;
+}
+
+.tiptap h1:first-child,
+.tiptap h2:first-child,
+.tiptap h3:first-child,
+.tiptap h4:first-child {
+  margin-top: 0;
+}
+
+/* 段落样式 */
+.tiptap p {
+  margin: 0.5em 0;
+}
+
+.tiptap p:first-child {
+  margin-top: 0;
+}
+
+.tiptap p:last-child {
+  margin-bottom: 0;
+}
+
+/* 加粗、斜体、下划线 */
+.tiptap strong {
+  font-weight: 600;
+}
+
+.tiptap em {
+  font-style: italic;
+}
+
+.tiptap u {
+  text-decoration: underline;
+}
+
+.tiptap s {
+  text-decoration: line-through;
+}
+
+/* 链接样式 */
+.tiptap a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tiptap a:hover {
+  opacity: 0.8;
+}
+
+/* 图片样式 */
+.tiptap img,
+img.rich-text-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 0.5em 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  outline: 3px solid transparent;
+  outline-offset: 2px;
+}
+
+.tiptap img:hover,
+img.rich-text-image:hover {
+  outline-color: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* 图片选中状态 - 明显的蓝色边框 */
+.tiptap img.ProseMirror-selectednode,
+.tiptap img.image-selected,
+img.rich-text-image.image-selected,
+.ProseMirror img.image-selected {
+  outline-color: #3b82f6 !important;
+  outline-width: 3px !important;
+  outline-style: solid !important;
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.15), 0 4px 12px rgba(59, 130, 246, 0.25) !important;
+}
+
+/* 图片对齐样式 - 不使用 float，保持文本排版 */
+.tiptap img[data-align="left"] {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+.tiptap img[data-align="right"] {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.tiptap img[data-align="center"] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 图片 NodeView 组件样式 */
+.tiptap .image-node-view {
+  margin: 1em 0;
+}
+
+.tiptap .image-node-view.is-selected figure.image-figure {
+  outline: 3px solid #3b82f6;
+  outline-offset: 4px;
+  border-radius: 0.5rem;
+}
+
+.tiptap .image-node-view figure.image-figure {
+  margin: 0;
+  padding: 0;
+  display: block;
+  transition: outline 0.15s ease;
+}
+
+.tiptap .image-node-view figure.image-figure img {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border-radius: 0.5rem;
+}
+
+/* 可编辑图注样式 */
+.tiptap .image-caption-editable {
+  margin-top: 0.5rem;
+}
+
+.tiptap .image-caption-input {
+  width: 100%;
+  text-align: center;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  padding: 0.25rem 0.5rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.tiptap .image-caption-input:hover {
+  border-bottom-color: hsl(var(--border));
+}
+
+.tiptap .image-caption-input:focus {
+  border-bottom-color: hsl(var(--primary));
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 0.25rem;
+}
+
+.tiptap .image-caption-input::placeholder {
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* 静态图注样式（用于导出） */
+.tiptap figcaption.image-caption {
+  text-align: center;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  margin-top: 0.5rem;
+  padding: 0.25rem 0;
+  font-style: italic;
+}
+
+/* 引用样式 */
+.tiptap blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+/* 代码样式 */
+.tiptap code {
+  background-color: hsl(var(--muted));
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.875em;
+}
+
+.tiptap pre {
+  background-color: hsl(var(--muted));
+  padding: 0.75em 1em;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.tiptap pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.875em;
+}
+
+/* 分割线 */
+.tiptap hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+  margin: 1em 0;
+}
+
+/* 高亮样式 */
+.tiptap mark {
+  border-radius: 0.25rem;
+  padding: 0 0.125em;
+}
+
+/* 对齐 */
+.tiptap [style*="text-align: center"] {
+  text-align: center;
+}
+
+.tiptap [style*="text-align: right"] {
+  text-align: right;
+}
+
+.tiptap [style*="text-align: justify"] {
+  text-align: justify;
+}
+
+/* 缩进支持 - 保留 style 中的 margin-left */
+.tiptap p[style*="margin-left"],
+.tiptap h1[style*="margin-left"],
+.tiptap h2[style*="margin-left"],
+.tiptap h3[style*="margin-left"],
+.tiptap h4[style*="margin-left"] {
+  /* margin-left 通过 inline style 设置 */
+}
+
+/* 行距支持 */
+.tiptap p[style*="line-height"],
+.tiptap h1[style*="line-height"],
+.tiptap h2[style*="line-height"],
+.tiptap h3[style*="line-height"],
+.tiptap h4[style*="line-height"] {
+  /* line-height 通过 inline style 设置 */
+}
