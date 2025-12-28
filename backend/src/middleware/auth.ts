@@ -108,7 +108,7 @@ const userService = new UserService();
 class SecurityLogger {
     private static instance: SecurityLogger;
 
-    private constructor() {}
+    private constructor() { }
 
     static getInstance(): SecurityLogger {
         if (!SecurityLogger.instance) {
@@ -505,6 +505,7 @@ export const requireEmployee = requireInternalUser;
 
 // 导出别名，保持向后兼容
 export const authMiddleware = authenticateToken;
+export const authenticateJWT = authenticateToken;
 
 // 导出安全日志工具（供其他模块使用）
 export { securityLogger, SecurityLogger };

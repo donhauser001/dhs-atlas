@@ -50,6 +50,10 @@ import websocketRoutes from './routes/websocket';
 import authRoutes from './routes/auth';
 import devToolsRoutes from './routes/devTools';
 import clientPortalRoutes from './routes/clientPortal';
+import aiSettingsRoutes from './routes/aiSettings';
+import aiChatRoutes from './routes/aiChat';
+import agentRoutes from './routes/agent';
+import aiConfigRoutes from './routes/aiConfig';
 
 // 加载环境变量
 dotenv.config();
@@ -203,6 +207,18 @@ app.use('/api/dev-tools', devToolsRoutes);
 
 // 客户门户路由
 app.use('/api/client-portal', clientPortalRoutes);
+
+// AI 设置路由
+app.use('/api/ai-settings', aiSettingsRoutes);
+
+// AI 配置路由（工具集、数据模型、样例模板）
+app.use('/api/ai-config', aiConfigRoutes);
+
+// AI 聊天路由（旧版，保留兼容）
+app.use('/api/ai', aiChatRoutes);
+
+// AI Agent 路由（新版，基于 Tool Protocol）
+app.use('/api/agent', agentRoutes);
 
 // 错误处理中间件
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

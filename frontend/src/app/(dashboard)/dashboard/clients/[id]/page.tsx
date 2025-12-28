@@ -156,7 +156,7 @@ export default function ClientDetailPage() {
         return true;
       }
       // 兼容旧数据：如果用户有 company 字段，也进行匹配
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       if ((user as Record<string, unknown>).company === client.name) {
         return true;
       }

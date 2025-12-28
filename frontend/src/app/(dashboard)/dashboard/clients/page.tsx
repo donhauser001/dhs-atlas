@@ -58,8 +58,11 @@ import {
 import { useClients, useDeleteClient } from '@/hooks/queries/use-clients';
 import { Client, clientApi } from '@/api/clients';
 import { ClientCategory, clientCategoryApi } from '@/api/client-categories';
-import { ClientModal } from '@/components/features/clients';
+import { FormModal } from '@/components/forms';
 import { toast } from 'sonner';
+
+// 导入表单注册（确保表单被注册）
+import '@/components/forms/register';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_PAGE_SIZE = 20;
@@ -76,10 +79,11 @@ export default function ClientsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
-  // 模态窗状态
+  // 模态窗状态 - 使用新的表单系统
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('create');
+  const [modalFormId, setModalFormId] = useState<string>('client-create');
+  const [modalOperationMode, setModalOperationMode] = useState<'create' | 'edit' | 'view'>('create');
 
   const { data, isLoading, refetch } = useClients();
   const deleteClient = useDeleteClient();
@@ -184,14 +188,24 @@ export default function ClientsPage() {
   // 打开新增模态窗
   const handleAdd = () => {
     setSelectedClient(null);
-    setModalMode('create');
+    setModalFormId('client-create');
+    setModalOperationMode('create');
     setModalOpen(true);
   };
 
   // 打开编辑模态窗
   const handleEdit = (client: Client) => {
     setSelectedClient(client);
-    setModalMode('edit');
+    setModalFormId('client-edit');
+    setModalOperationMode('edit');
+    setModalOpen(true);
+  };
+
+  // 打开查看模态窗
+  const handleView = (client: Client) => {
+    setSelectedClient(client);
+    setModalFormId('client-view');
+    setModalOperationMode('view');
     setModalOpen(true);
   };
 
@@ -396,7 +410,7 @@ export default function ClientsPage() {
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push(`/dashboard/clients/${client._id}`);
+                                handleView(client);
                               }}
                             >
                               <Eye className="mr-2 h-4 w-4" />
@@ -521,12 +535,13 @@ export default function ClientsPage() {
         </Card>
       </div>
 
-      {/* 客户模态窗 */}
-      <ClientModal
+      {/* 客户模态窗 - 使用新的 FormModal 组件 */}
+      <FormModal
+        formId={modalFormId}
         open={modalOpen}
         onOpenChange={setModalOpen}
-        client={selectedClient}
-        mode={modalMode}
+        initialData={(selectedClient ?? undefined) as Record<string, unknown> | undefined}
+        operationMode={modalOperationMode}
         onSuccess={() => refetch()}
       />
 

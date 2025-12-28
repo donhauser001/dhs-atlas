@@ -145,6 +145,7 @@ const systemNavigation = [
     title: '系统设置',
     icon: Settings,
     items: [
+      { title: 'AI 设置', href: '/dashboard/settings/ai' },
       { title: '邮件配置', href: '/dashboard/settings/email' },
       { title: '附加配置', href: '/dashboard/settings/additional' },
     ],

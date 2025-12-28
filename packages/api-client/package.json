@@ -1,0 +1,36 @@
+{
+    "name": "@dhs-atlas/api-client",
+    "version": "0.1.0",
+    "private": true,
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        },
+        "./hooks": {
+            "types": "./src/hooks/index.ts",
+            "default": "./src/hooks/index.ts"
+        },
+        "./tenant": {
+            "types": "./src/tenant.ts",
+            "default": "./src/tenant.ts"
+        }
+    },
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint src/",
+        "generate": "openapi-typescript services/api/openapi/tenant.yaml -o src/generated/tenant.ts"
+    },
+    "dependencies": {
+        "@tanstack/react-query": "^5.62.8",
+        "openapi-fetch": "^0.13.4",
+        "react": "^19.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.2",
+        "@types/react": "^19.0.2",
+        "eslint": "^9.17.0",
+        "openapi-typescript": "^7.4.4",
+        "typescript": "^5.7.2"
+    }
+}
