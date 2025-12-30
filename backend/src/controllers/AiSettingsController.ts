@@ -2,17 +2,12 @@
  * AI 设置控制器
  */
 
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import axios from 'axios';
 import AiModel, { IAiModel } from '../models/AiModel';
 
-// 扩展 Request 类型以包含 user 属性
-interface AuthRequest extends Request {
-  user?: {
-    userId: string;
-    enterpriseId: string;
-  };
-}
+// 使用 any 类型的 Request 以避免与其他地方的 user 类型扩展冲突
+type AuthRequest = any;
 
 /**
  * 获取所有 AI 模型配置
@@ -49,7 +44,7 @@ export const getAiModel = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'AI 模型不存在' });
     }
 
-    res.json({
+    return res.json({
       data: {
         ...model.toJSON(),
         apiKeySet: !!model.apiKey,
@@ -57,7 +52,7 @@ export const getAiModel = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('获取 AI 模型失败:', error);
-    res.status(500).json({ error: '获取 AI 模型失败' });
+    return res.status(500).json({ error: '获取 AI 模型失败' });
   }
 };
 
@@ -135,7 +130,7 @@ export const updateAiModel = async (req: AuthRequest, res: Response) => {
 
     await existingModel.save();
 
-    res.json({
+    return res.json({
       data: {
         ...existingModel.toJSON(),
         apiKeySet: !!existingModel.apiKey,
@@ -143,7 +138,7 @@ export const updateAiModel = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('更新 AI 模型失败:', error);
-    res.status(500).json({ error: '更新 AI 模型失败' });
+    return res.status(500).json({ error: '更新 AI 模型失败' });
   }
 };
 
@@ -160,10 +155,10 @@ export const deleteAiModel = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'AI 模型不存在' });
     }
 
-    res.json({ message: '删除成功' });
+    return res.json({ message: '删除成功' });
   } catch (error) {
     console.error('删除 AI 模型失败:', error);
-    res.status(500).json({ error: '删除 AI 模型失败' });
+    return res.status(500).json({ error: '删除 AI 模型失败' });
   }
 };
 
@@ -185,10 +180,10 @@ export const setDefaultModel = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'AI 模型不存在' });
     }
 
-    res.json({ data: model });
+    return res.json({ data: model });
   } catch (error) {
     console.error('设置默认模型失败:', error);
-    res.status(500).json({ error: '设置默认模型失败' });
+    return res.status(500).json({ error: '设置默认模型失败' });
   }
 };
 

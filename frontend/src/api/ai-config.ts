@@ -8,6 +8,63 @@ import api from '@/lib/axios';
 
 // ==================== 类型定义 ====================
 
+// 执行步骤类型
+export type ExecutionStepType =
+    | 'db_query'
+    | 'db_aggregate'
+    | 'db_insert'
+    | 'db_update'
+    | 'db_delete'
+    | 'template_replace'
+    | 'transform'
+    | 'condition'
+    | 'return';
+
+// 执行步骤配置
+export interface ExecutionStep {
+    name: string;
+    type: ExecutionStepType;
+    collection?: string;
+    query?: Record<string, unknown>;
+    projection?: Record<string, unknown>;
+    sort?: Record<string, unknown>;
+    limit?: number | string;
+    pipeline?: Record<string, unknown>[];
+    document?: Record<string, unknown>;
+    update?: Record<string, unknown>;
+    single?: boolean;
+    template?: string;
+    data?: string | Record<string, unknown>;
+    input?: string;
+    expression?: string;
+    condition?: string;
+    thenStep?: string;
+    elseStep?: string;
+    result?: string | Record<string, unknown>;
+    message?: string;
+}
+
+// 工具执行配置
+export interface ToolExecution {
+    type: 'simple' | 'pipeline';
+    collection?: string;
+    operation?: 'find' | 'findOne' | 'aggregate' | 'insert' | 'update' | 'delete' | 'count';
+    query?: Record<string, unknown>;
+    projection?: Record<string, unknown>;
+    sort?: Record<string, unknown>;
+    limit?: number | string;
+    pipeline?: Record<string, unknown>[];
+    document?: Record<string, unknown>;
+    update?: Record<string, unknown>;
+    steps?: ExecutionStep[];
+    requiresConfirmation?: boolean;
+    resultTemplate?: string;
+    onError?: {
+        message: string;
+        fallback?: unknown;
+    };
+}
+
 export interface AiTool {
     _id: string;
     toolId: string;
@@ -18,23 +75,13 @@ export interface AiTool {
     enabled: boolean;
     category: string;
     order: number;
+    execution?: ToolExecution;
+    paramsSchema?: Record<string, unknown>;
     createdAt: string;
     updatedAt: string;
 }
 
-export interface AiDataModel {
-    _id: string;
-    collection: string;
-    name: string;
-    description: string;
-    fields: string;
-    relations: string;
-    queryExamples: string;
-    enabled: boolean;
-    order: number;
-    createdAt: string;
-    updatedAt: string;
-}
+// AiDataModel 已移除，数据结构现在由 DataMapService 自动从 Schema 提取
 
 export interface AiTemplate {
     _id: string;
@@ -93,27 +140,6 @@ export async function updateAiTool(id: string, data: Partial<AiTool>): Promise<A
 
 export async function deleteAiTool(id: string): Promise<void> {
     await api.delete(`/ai-config/tools/${id}`);
-}
-
-// ==================== 数据模型 API ====================
-
-export async function getAiDataModels(): Promise<AiDataModel[]> {
-    const response = await api.get<{ success: boolean; data: AiDataModel[] }>('/ai-config/data-models');
-    return response.data.data;
-}
-
-export async function createAiDataModel(data: Partial<AiDataModel>): Promise<AiDataModel> {
-    const response = await api.post<{ success: boolean; data: AiDataModel }>('/ai-config/data-models', data);
-    return response.data.data;
-}
-
-export async function updateAiDataModel(id: string, data: Partial<AiDataModel>): Promise<AiDataModel> {
-    const response = await api.put<{ success: boolean; data: AiDataModel }>(`/ai-config/data-models/${id}`, data);
-    return response.data.data;
-}
-
-export async function deleteAiDataModel(id: string): Promise<void> {
-    await api.delete(`/ai-config/data-models/${id}`);
 }
 
 // ==================== 样例模板 API ====================

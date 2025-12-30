@@ -111,17 +111,17 @@ export default function ContractCategoriesPage() {
 
   const handleCreate = () => {
     if (!newCategory.name) {
-      toast.error('请填写分类名称');
+      toast.error('请填写类型名称');
       return;
     }
-    toast.success('模板分类创建成功');
+    toast.success('范本类型创建成功');
     setCreateDialogOpen(false);
     setNewCategory({ name: '', description: '', sortOrder: 0 });
   };
 
   const handleDelete = () => {
     if (deleteId) {
-      toast.success('模板分类已删除');
+      toast.success('范本类型已删除');
       setDeleteId(null);
     }
   };
@@ -155,7 +155,7 @@ export default function ContractCategoriesPage() {
     },
     {
       accessorKey: 'templateCount',
-      header: '模板数量',
+      header: '范本数量',
       cell: ({ row }) => (
         <Badge variant="secondary">
           <FileText className="h-3 w-3 mr-1" />
@@ -242,10 +242,10 @@ export default function ContractCategoriesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="模板分类"
-        description="管理合同模板的分类"
+        title="范本类型"
+        description="管理合同范本的类型分类"
         action={{
-          label: '新建分类',
+          label: '新建类型',
           onClick: () => setCreateDialogOpen(true),
         }}
       >
@@ -265,7 +265,7 @@ export default function ContractCategoriesPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">分类总数</CardTitle>
+            <CardTitle className="text-sm font-medium">类型总数</CardTitle>
             <FolderOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -283,7 +283,7 @@ export default function ContractCategoriesPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">模板总数</CardTitle>
+            <CardTitle className="text-sm font-medium">范本总数</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -292,29 +292,29 @@ export default function ContractCategoriesPage() {
         </Card>
       </div>
 
-      {/* 分类列表 */}
+      {/* 类型列表 */}
       <DataTable
         columns={columns}
         data={filteredCategories}
         searchKey="name"
-        searchPlaceholder="搜索分类名称..."
+        searchPlaceholder="搜索类型名称..."
       />
 
       {/* 新建对话框 */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>新建模板分类</DialogTitle>
-            <DialogDescription>创建新的合同模板分类</DialogDescription>
+            <DialogTitle>新建范本类型</DialogTitle>
+            <DialogDescription>创建新的合同范本类型</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">分类名称 *</Label>
+              <Label htmlFor="name">类型名称 *</Label>
               <Input
                 id="name"
                 value={newCategory.name}
                 onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
-                placeholder="请输入分类名称"
+                placeholder="请输入类型名称"
               />
             </div>
             <div className="space-y-2">
@@ -323,7 +323,7 @@ export default function ContractCategoriesPage() {
                 id="description"
                 value={newCategory.description}
                 onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
-                placeholder="请输入分类描述"
+                placeholder="请输入类型描述"
                 rows={2}
               />
             </div>
@@ -353,7 +353,7 @@ export default function ContractCategoriesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除这个分类吗？分类下的模板将变为未分类状态。
+              确定要删除这个类型吗？该类型下的范本将变为未分类状态。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

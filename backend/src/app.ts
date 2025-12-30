@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { createServer } from 'http';
 import { WebSocketService } from './services/WebSocketService';
 import { TaskSchedulerService } from './services/TaskSchedulerService';
+import { dataMapService } from './services/DataMapService';
 
 // 导入路由
 import userRoutes from './routes/users';
@@ -54,6 +55,10 @@ import aiSettingsRoutes from './routes/aiSettings';
 import aiChatRoutes from './routes/aiChat';
 import agentRoutes from './routes/agent';
 import aiConfigRoutes from './routes/aiConfig';
+import auditRoutes from './routes/audit';
+import memoryRoutes from './routes/memory';
+import contextRoutes from './routes/context';
+import conversationsRoutes from './routes/conversations';
 
 // 加载环境变量
 dotenv.config();
@@ -89,6 +94,9 @@ connectDB().then(() => {
   // 初始化并启动任务调度服务
   taskSchedulerService = new TaskSchedulerService();
   taskSchedulerService.start();
+
+  // 启动数据地图服务（AI 使用，每小时自动刷新）
+  dataMapService.start();
 });
 
 // 中间件
@@ -219,6 +227,14 @@ app.use('/api/ai', aiChatRoutes);
 
 // AI Agent 路由（新版，基于 Tool Protocol）
 app.use('/api/agent', agentRoutes);
+
+// 审计日志路由
+app.use('/api/audit', auditRoutes);
+
+// 记忆系统路由
+app.use('/api/memory', memoryRoutes);
+app.use('/api/context', contextRoutes);
+app.use('/api/conversations', conversationsRoutes);
 
 // 错误处理中间件
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

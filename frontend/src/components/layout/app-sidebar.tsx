@@ -72,9 +72,9 @@ const navigation = [
     title: '合同管理',
     icon: FileText,
     items: [
-      { title: '合同模板', href: '/dashboard/contracts/templates' },
-      { title: '模板分类', href: '/dashboard/contracts/categories' },
-      { title: '已生成合同', href: '/dashboard/contracts/generated' },
+      { title: '合同列表', href: '/dashboard/contracts' },
+      { title: '合同范本', href: '/dashboard/contracts/templates' },
+      { title: '范本类型', href: '/dashboard/contracts/categories' },
     ],
   },
   {
@@ -163,12 +163,27 @@ function CollapsibleNavItem({
   const isActive = (href: string) => pathname.startsWith(href);
   const isGroupActive = item.items.some((subItem) => isActive(subItem.href));
 
-  // 使用 useState 延迟设置初始状态，避免 hydration 不匹配
+  // 使用 mounted 状态延迟渲染 Collapsible，避免 hydration 不匹配
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     setOpen(isGroupActive);
   }, [isGroupActive]);
+
+  // 在客户端挂载前返回一个简单的占位符，避免 hydration 不匹配
+  if (!mounted) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton>
+          <item.icon className="h-4 w-4" />
+          <span>{item.title}</span>
+          <ChevronDown className="ml-auto h-4 w-4" />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>

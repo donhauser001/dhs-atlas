@@ -1,8 +1,9 @@
 'use client';
 
 /**
- * AI Panel - AI 原生架构的对话面板
+ * AI Panel - V2 架构
  * 
+ * AI 智能不受限，系统只守门
  * 使用新的 Agent API，所有 AI 决策由后端完成。
  */
 
@@ -12,7 +13,6 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { useAi, type AiMessage } from './ai-context';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Sparkles,
   Send,
@@ -22,7 +22,8 @@ import {
   CheckCircle,
   XCircle,
 } from 'lucide-react';
-import type { ToolCallRequest, PredictedAction } from '@/api/agent';
+import type { ToolCallRequest, PredictedAction, TaskList } from '@/api/agent';
+import { TaskPanel } from './task-panel';
 
 // ============ Constants ============
 
@@ -41,8 +42,10 @@ interface MessageBubbleProps {
 function MessageBubble({ message, onConfirmTools, onPredictedAction }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
+  const isError = message.status === 'error';
   const hasPendingTools = message.pendingToolCalls && message.pendingToolCalls.length > 0;
   const hasPredictedActions = message.predictedActions && message.predictedActions.length > 0;
+  const hasExplanation = message.explanation && message.explanation.userMessage;
 
   return (
     <div
@@ -57,12 +60,31 @@ function MessageBubble({ message, onConfirmTools, onPredictedAction }: MessageBu
           'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm',
           isUser
             ? 'bg-primary text-primary-foreground rounded-br-md'
-            : 'bg-muted text-foreground rounded-bl-md',
+            : isError
+              ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800 rounded-bl-md'
+              : 'bg-muted text-foreground rounded-bl-md',
           isStreaming && 'animate-pulse'
         )}
       >
         {isUser ? (
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        ) : isError && hasExplanation ? (
+          // 友好错误显示（Phase 2 增强）
+          <div className="space-y-2">
+            <div className="flex items-start gap-2">
+              <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p className="whitespace-pre-wrap break-words">{message.explanation!.userMessage}</p>
+            </div>
+            {message.explanation!.suggestion && (
+              <div className="flex items-start gap-2 text-xs opacity-80 border-t border-red-200 dark:border-red-700 pt-2 mt-2">
+                <span>💡</span>
+                <p>{message.explanation!.suggestion}</p>
+              </div>
+            )}
+            {message.explanation!.canRetry && (
+              <p className="text-xs opacity-60 mt-1">你可以尝试重新操作</p>
+            )}
+          </div>
         ) : (
           <div className="prose prose-sm dark:prose-invert max-w-none break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_table]:w-full [&_table]:text-xs [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1 [&_tr]:border-b">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
@@ -229,6 +251,7 @@ function ExpandedPanel() {
     activeCapability,
     sendMessage,
     confirmTools,
+    currentTaskList,
   } = useAi();
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -322,6 +345,13 @@ function ExpandedPanel() {
 
       {/* Quick Actions */}
       <QuickActionsBar />
+
+      {/* Task Panel - V2 架构：显示地图执行进度 */}
+      {currentTaskList && (
+        <div className="px-4 py-2 border-b bg-muted/20">
+          <TaskPanel taskList={currentTaskList} defaultExpanded={true} />
+        </div>
+      )}
 
       {/* Messages */}
       <div

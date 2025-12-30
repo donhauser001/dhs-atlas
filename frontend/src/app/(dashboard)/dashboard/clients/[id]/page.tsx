@@ -60,7 +60,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { getFileUrl, formatFileSize, isImageFile, getThumbnailUrl, downloadFile } from '@/api/files';
+import { getFileUrl, formatFileSize, isImageFile, getThumbnailUrl, downloadFile, type FileItem } from '@/api/files';
 import { ClientModal } from '@/components/features/clients/client-modal';
 import { ClientBasicInfoCard } from '@/components/features/clients/client-basic-info-card';
 import { format } from 'date-fns';
@@ -71,6 +71,7 @@ import { useProjects } from '@/hooks/queries/use-projects';
 import { useQuotationsByClient, useQuotation } from '@/hooks/queries/use-quotations';
 import { useSettlements } from '@/hooks/queries/use-settlements';
 import { useContractsByRelatedIds } from '@/hooks/queries/use-contracts';
+import type { GeneratedContract } from '@/api/generatedContracts';
 import { useClientFiles, fileKeys } from '@/hooks/queries/use-files';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { getProjectFiles } from '@/api/files';
@@ -156,8 +157,8 @@ export default function ClientDetailPage() {
         return true;
       }
       // 兼容旧数据：如果用户有 company 字段，也进行匹配
-       
-      if ((user as Record<string, unknown>).company === client.name) {
+      const userData = user as unknown as Record<string, unknown>;
+      if (userData.company === client.name) {
         return true;
       }
       return false;
@@ -213,9 +214,9 @@ export default function ClientDetailPage() {
     clientId,
     limit: 100,
   });
-  const contracts = useMemo(() => {
+  const contracts = useMemo((): GeneratedContract[] => {
     if (!contractsResponse?.success) return [];
-    const data = contractsResponse.data as { contracts?: unknown[] } | unknown[];
+    const data = contractsResponse.data as { contracts?: GeneratedContract[] } | GeneratedContract[];
     const contractsData = (data && 'contracts' in data ? data.contracts : data) || [];
     return Array.isArray(contractsData) ? contractsData : [];
   }, [contractsResponse]);

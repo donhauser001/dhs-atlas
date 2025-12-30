@@ -1,5 +1,7 @@
 /**
  * Agent API 路由
+ * 
+ * V2 架构：简化路由，移除规则匹配相关接口
  */
 
 import { Router } from 'express';
@@ -24,4 +26,3 @@ router.get('/status', AgentController.status);
 router.get('/tools', AgentController.getTools);
 
 export default router;
-

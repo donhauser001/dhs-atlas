@@ -51,9 +51,19 @@ import {
     useCreateAiMap,
     useUpdateAiMap,
     useDeleteAiMap,
+    useAiTools,
+    useAiDataModels,
+    useAiTemplates,
 } from '@/hooks/queries/use-ai-config';
 import type { AiMap, AiMapStep } from '@/api/ai-config';
 import { AiSettingsNav } from '../_components/ai-settings-nav';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 const defaultStep: AiMapStep = {
     order: 1,
@@ -67,6 +77,9 @@ const defaultStep: AiMapStep = {
 
 export default function AiMapsPage() {
     const { data: maps, isLoading } = useAiMaps();
+    const { data: tools } = useAiTools();
+    const { data: dataModels } = useAiDataModels();
+    const { data: templates } = useAiTemplates();
     const createMutation = useCreateAiMap();
     const updateMutation = useUpdateAiMap();
     const deleteMutation = useDeleteAiMap();
@@ -445,33 +458,66 @@ export default function AiMapsPage() {
                                         </div>
                                         <div className="space-y-2">
                                             <Label>工具 ID</Label>
-                                            <Input
-                                                placeholder="如：db.query"
+                                            <Select
                                                 value={step.toolId || ''}
-                                                onChange={(e) =>
-                                                    handleStepChange(index, 'toolId', e.target.value)
+                                                onValueChange={(value) =>
+                                                    handleStepChange(index, 'toolId', value === '_none_' ? '' : value)
                                                 }
-                                            />
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="选择工具" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="_none_">无</SelectItem>
+                                                    {tools?.map((tool) => (
+                                                        <SelectItem key={tool._id} value={tool.toolId}>
+                                                            {tool.name} ({tool.toolId})
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                         <div className="space-y-2">
                                             <Label>数据模型</Label>
-                                            <Input
-                                                placeholder="如：clients"
+                                            <Select
                                                 value={step.dataModel || ''}
-                                                onChange={(e) =>
-                                                    handleStepChange(index, 'dataModel', e.target.value)
+                                                onValueChange={(value) =>
+                                                    handleStepChange(index, 'dataModel', value === '_none_' ? '' : value)
                                                 }
-                                            />
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="选择数据模型" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="_none_">无</SelectItem>
+                                                    {dataModels?.map((model) => (
+                                                        <SelectItem key={model._id} value={model.collection}>
+                                                            {model.name} ({model.collection})
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                         <div className="space-y-2">
                                             <Label>输出模板</Label>
-                                            <Input
-                                                placeholder="如：client_detail"
+                                            <Select
                                                 value={step.templateId || ''}
-                                                onChange={(e) =>
-                                                    handleStepChange(index, 'templateId', e.target.value)
+                                                onValueChange={(value) =>
+                                                    handleStepChange(index, 'templateId', value === '_none_' ? '' : value)
                                                 }
-                                            />
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="选择模板" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="_none_">无</SelectItem>
+                                                    {templates?.map((template) => (
+                                                        <SelectItem key={template._id} value={template.templateId}>
+                                                            {template.name} ({template.templateId})
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                         <div className="space-y-2">
                                             <Label>条件</Label>

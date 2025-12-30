@@ -1,5 +1,7 @@
 import axios, { AxiosError } from 'axios'
-import { getApiBaseURL } from '@/config/axios'
+
+// API 基础 URL
+const getApiBaseURL = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'
 
 // API 错误响应类型
 interface ApiErrorResponse {

@@ -1,5 +1,7 @@
 /**
  * AI 设置页面导航
+ * 
+ * V2 架构：简化导航，新增记忆管理和对话历史
  */
 
 'use client';
@@ -7,7 +9,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Cpu, Wrench, Database, FileCode, Map } from 'lucide-react';
+import { Cpu, Wrench, FileCode, Map, Shield, Brain, MessageSquare } from 'lucide-react';
+
+// 注意：数据模型已移除，现在由 DataMapService 自动从 Schema 提取
 
 const navItems = [
     {
@@ -22,11 +26,6 @@ const navItems = [
         icon: Wrench,
     },
     {
-        href: '/dashboard/settings/ai/data-models',
-        label: '数据模型',
-        icon: Database,
-    },
-    {
         href: '/dashboard/settings/ai/templates',
         label: '样例模板',
         icon: FileCode,
@@ -35,6 +34,21 @@ const navItems = [
         href: '/dashboard/settings/ai/maps',
         label: 'AI 地图',
         icon: Map,
+    },
+    {
+        href: '/dashboard/settings/ai/memory',
+        label: 'AI 记忆',
+        icon: Brain,
+    },
+    {
+        href: '/dashboard/settings/ai/conversations',
+        label: '对话历史',
+        icon: MessageSquare,
+    },
+    {
+        href: '/dashboard/settings/ai/audit',
+        label: '审计日志',
+        icon: Shield,
     },
 ];
 
@@ -68,4 +82,3 @@ export function AiSettingsNav() {
         </nav>
     );
 }
-

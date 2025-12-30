@@ -17,12 +17,6 @@ router.post('/tools', AiConfigController.createTool);
 router.put('/tools/:id', AiConfigController.updateTool);
 router.delete('/tools/:id', AiConfigController.deleteTool);
 
-// 数据模型管理
-router.get('/data-models', AiConfigController.getDataModels);
-router.post('/data-models', AiConfigController.createDataModel);
-router.put('/data-models/:id', AiConfigController.updateDataModel);
-router.delete('/data-models/:id', AiConfigController.deleteDataModel);
-
 // 样例模板管理
 router.get('/templates', AiConfigController.getTemplates);
 router.post('/templates', AiConfigController.createTemplate);

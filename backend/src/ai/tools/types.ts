@@ -5,6 +5,47 @@
  */
 
 import { z } from 'zod';
+import type { ReasonCode } from '../agent/reason-codes';
+
+// ============================================================================
+// StructuredError 定义（Phase 2: 失败语义支持）
+// ============================================================================
+
+/**
+ * 结构化错误
+ * 
+ * 相比传统的 { code, message }，增加了：
+ * - reasonCode: 标准化原因码（可分类、可统计）
+ * - userMessage: 用户友好提示（可直接展示）
+ * - suggestion: 建议操作（帮助用户解决问题）
+ * - canRetry: 是否可重试（决定 UI 行为）
+ */
+export interface StructuredError {
+    /** 系统错误码（如 TOOL_NOT_FOUND） */
+    code: string;
+    /** 技术错误信息（给开发者看） */
+    message: string;
+    /** 标准化原因码（用于统计和分类） */
+    reasonCode: ReasonCode;
+    /** 用户友好提示（可直接展示给用户） */
+    userMessage: string;
+    /** 建议操作（帮助用户解决问题） */
+    suggestion?: string;
+    /** 是否可重试 */
+    canRetry: boolean;
+}
+
+/**
+ * 创建 StructuredError 的参数
+ */
+export interface CreateStructuredErrorParams {
+    code: string;
+    message: string;
+    reasonCode: ReasonCode;
+    userMessage?: string;
+    suggestion?: string;
+    canRetry?: boolean;
+}
 
 /**
  * 工具执行上下文
@@ -43,10 +84,8 @@ export interface ToolResult<T = unknown> {
         props: Record<string, unknown>;
     };
 
-    error?: {
-        code: string;
-        message: string;
-    };
+    /** 错误信息（结构化） */
+    error?: StructuredError;
 }
 
 /**
@@ -104,5 +143,8 @@ export interface ToolDescription {
     description: string;
     parameters: Record<string, unknown>; // JSON Schema 格式
     requiresConfirmation?: boolean;
+    usage?: string;      // 使用方法
+    examples?: string;   // 调用示例
+    category?: string;   // 工具分类
 }
 

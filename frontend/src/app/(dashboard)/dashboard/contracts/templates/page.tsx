@@ -111,7 +111,7 @@ export default function ContractTemplatesPage() {
   const columns: ColumnDef<ContractTemplate>[] = [
     {
       accessorKey: 'name',
-      header: '模板名称',
+      header: '范本名称',
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground" />
@@ -237,10 +237,10 @@ export default function ContractTemplatesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="合同模板"
-        description="管理合同模板，支持占位符配置"
+        title="合同范本"
+        description="管理合同范本，AI 将基于范本自动生成合同"
         action={{
-          label: '新建模板',
+          label: '新建范本',
           onClick: () => router.push('/dashboard/contracts/templates/create'),
         }}
       >
@@ -262,7 +262,7 @@ export default function ContractTemplatesPage() {
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">模板总数</CardTitle>
+              <CardTitle className="text-sm font-medium">范本总数</CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -299,21 +299,21 @@ export default function ContractTemplatesPage() {
         </div>
       )}
 
-      {/* 模板列表 */}
+      {/* 范本列表 */}
       <DataTable
         columns={columns}
         data={templates}
         searchKey="name"
-        searchPlaceholder="搜索模板名称..."
+        searchPlaceholder="搜索范本名称..."
       />
 
       {/* 删除确认 */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除模板</AlertDialogTitle>
+            <AlertDialogTitle>确认删除范本</AlertDialogTitle>
             <AlertDialogDescription>
-              删除后无法恢复，且使用该模板生成的合同不受影响。确定要删除吗？
+              删除后无法恢复，且使用该范本生成的合同不受影响。确定要删除吗？
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

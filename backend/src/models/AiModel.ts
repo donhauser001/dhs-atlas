@@ -18,10 +18,12 @@ export type AiProvider =
   | 'custom';
 
 // AI 模型配置接口
-export interface IAiModel extends Document {
+// 注意：不继承 Document 以避免 'model' 属性与 Mongoose Document.model 方法冲突
+export interface IAiModel {
+  _id?: mongoose.Types.ObjectId;
   name: string;
   provider: AiProvider;
-  model: string;
+  model: string;  // 模型名称，如 gpt-4, claude-3 等
   apiKey?: string;
   baseUrl?: string;
   temperature?: number;
@@ -29,12 +31,12 @@ export interface IAiModel extends Document {
   topP?: number;
   isDefault: boolean;
   isEnabled: boolean;
-  enterpriseId: mongoose.Types.ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
+  enterpriseId?: mongoose.Types.ObjectId;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-const AiModelSchema = new Schema<IAiModel>(
+const AiModelSchema = new Schema(
   {
     name: {
       type: String,
@@ -120,5 +122,5 @@ AiModelSchema.virtual('apiKeySet').get(function () {
 AiModelSchema.set('toJSON', { virtuals: true });
 AiModelSchema.set('toObject', { virtuals: true });
 
-export default mongoose.model<IAiModel>('AiModel', AiModelSchema);
+export default mongoose.model('AiModel', AiModelSchema);
 

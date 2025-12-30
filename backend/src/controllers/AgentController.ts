@@ -1,12 +1,17 @@
 /**
  * Agent API 控制器
  * 
+ * V2 架构：智能 AI + 系统守门
+ * 
  * 处理 AI Agent 相关的 HTTP 请求
  */
 
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { processAgentRequest, confirmAndExecuteTools } from '../ai/agent';
+import { 
+  processAgentRequest, 
+  confirmAndExecuteTools,
+} from '../ai/agent';
 import { registerAllTools, toolRegistry } from '../ai/tools';
 import AiModel from '../models/AiModel';
 
@@ -22,13 +27,16 @@ function ensureToolsRegistered() {
 class AgentController {
   /**
    * 处理 AI 对话请求
+   * 
+   * V2 架构：AI 自由理解 → 系统守门 → 执行
    */
   async chat(req: Request, res: Response) {
     try {
       ensureToolsRegistered();
 
       const { message, history, context, sessionId: clientSessionId } = req.body;
-      const userId = (req as { userId?: string }).userId || 'anonymous';
+      // 从 JWT 中间件设置的 req.user 获取用户 ID
+      const userId = req.user?.userId || req.user?.id || 'anonymous';
 
       if (!message || typeof message !== 'string') {
         return res.status(400).json({
@@ -73,7 +81,8 @@ class AgentController {
       ensureToolsRegistered();
 
       const { toolCalls } = req.body;
-      const userId = (req as { userId?: string }).userId || 'anonymous';
+      // 从 JWT 中间件设置的 req.user 获取用户 ID
+      const userId = req.user?.userId || req.user?.id || 'anonymous';
 
       if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
         return res.status(400).json({
@@ -128,7 +137,7 @@ class AgentController {
         });
 
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as { data?: Array<{ id: string }> };
           return res.json({
             success: true,
             data: {
@@ -136,7 +145,7 @@ class AgentController {
               provider: defaultModel.provider,
               model: defaultModel.model,
               url: defaultModel.baseUrl,
-              models: data.data?.map((m: { id: string }) => m.id) || [],
+              models: data.data?.map((m) => m.id) || [],
               toolCount: toolRegistry.getAll().length,
             },
           });
@@ -194,4 +203,3 @@ class AgentController {
 }
 
 export default new AgentController();
-

@@ -52,6 +52,7 @@ import { useProjects } from '@/hooks/queries/use-projects';
 import { useQuotationsByClient } from '@/hooks/queries/use-quotations';
 import { useSettlements } from '@/hooks/queries/use-settlements';
 import { useContractsByRelatedIds } from '@/hooks/queries/use-contracts';
+import type { GeneratedContract } from '@/api/generatedContracts';
 import { useClientFiles, fileKeys } from '@/hooks/queries/use-files';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { getProjectFiles, FileItem, isImageFile, getFileUrl, getThumbnailUrl, formatFileSize, downloadFile } from '@/api/files';
@@ -206,13 +207,14 @@ export default function ContactDetailPage() {
     clientId: actualClientId,
     limit: 100,
   });
-  const contracts = useMemo(() => {
+  const contracts = useMemo((): GeneratedContract[] => {
     if (!contractsResponse?.success) return [];
-    const data = contractsResponse.data as { contracts?: unknown[] } | unknown[];
+    const data = contractsResponse.data as { contracts?: GeneratedContract[] } | GeneratedContract[];
     const contractsData = (data && 'contracts' in data ? data.contracts : data) || [];
     // 过滤出与联系人关联的合同
-    return Array.isArray(contractsData) ? contractsData.filter((contract: { contactId?: string; projectId?: string }) =>
-      contract.contactId === contactId || projectIds.includes(contract.projectId || '')
+    return Array.isArray(contractsData) ? contractsData.filter((contract) =>
+      (contract as unknown as { contactId?: string }).contactId === contactId || 
+      projectIds.includes((contract as unknown as { projectId?: string }).projectId || '')
     ) : [];
   }, [contractsResponse, contactId, projectIds]);
 
@@ -872,7 +874,7 @@ export default function ContactDetailPage() {
                                   {contract.status === 'completed' && '已完成'}
                                 </Badge>
                               </TableCell>
-                              <TableCell>{format(new Date(contract.generateTime), 'yyyy-MM-dd HH:mm')}</TableCell>
+                              <TableCell>{contract.generateTime ? format(new Date(contract.generateTime), 'yyyy-MM-dd HH:mm') : '—'}</TableCell>
                               <TableCell onClick={(e) => e.stopPropagation()}>
                                 <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/contracts/${contract._id}`)}>
                                   <Eye className="h-4 w-4 mr-1" />

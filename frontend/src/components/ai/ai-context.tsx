@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * AI Context - AI 原生架构的上下文提供者
+ * AI Context - V2 架构
  * 
- * 不再使用假工作流，所有 AI 决策都由后端 Agent Service 完成。
+ * AI 智能不受限，系统只守门
+ * AI 自由理解意图、查询地图、决定行动
  */
 
 import * as React from 'react';
@@ -27,6 +28,7 @@ import {
   type PredictedAction,
   type ToolCallRequest,
   type PageContext,
+  type TaskList,
 } from '@/api/agent';
 
 // ============ Types ============
@@ -45,6 +47,14 @@ export interface AiMessage {
   predictedActions?: PredictedAction[];
   /** UI 规格（需要渲染的组件） */
   uiSpec?: UISpec;
+  /** 友好错误解释（Phase 2 增强） */
+  explanation?: {
+    userMessage: string;
+    suggestion?: string;
+    canRetry: boolean;
+  };
+  /** 任务列表（V2 架构：地图执行时的进度） */
+  taskList?: TaskList;
 }
 
 export interface CanvasForm {
@@ -73,6 +83,9 @@ export interface AiContextValue {
   // AI 状态
   isThinking: boolean;
   setIsThinking: (thinking: boolean) => void;
+
+  // 任务列表（V2 架构：地图执行时的进度）
+  currentTaskList: TaskList | null;
 
   // 场景化能力
   activeCapability: ModuleCapability | null;
@@ -139,12 +152,20 @@ export function AiProvider({
   const [inputValue, setInputValue] = React.useState('');
   const [isThinking, setIsThinking] = React.useState(false);
   const [canvasForm, setCanvasForm] = React.useState<CanvasForm | null>(null);
+  const [currentTaskList, setCurrentTaskList] = React.useState<TaskList | null>(null);
 
   // 对话历史（用于发送给 Agent）
   const historyRef = React.useRef<AgentMessage[]>([]);
 
   // 会话 ID（用于保持工作流状态）
   const sessionIdRef = React.useRef<string | null>(null);
+
+  // 组件挂载时重置状态（确保刷新后清空）
+  React.useEffect(() => {
+    console.log('[AI] Provider 挂载，重置状态');
+    historyRef.current = [];
+    sessionIdRef.current = null;
+  }, []);
 
   // 获取表单能力
   const { availableForms, matchFormByIntent } = useAiFormCapabilities();
@@ -223,6 +244,7 @@ export function AiProvider({
     setMessages([]);
     historyRef.current = [];
     sessionIdRef.current = null; // 重置 sessionId，开始新会话
+    setCurrentTaskList(null); // 清除任务列表
   }, []);
 
   // 处理 UI Spec（从 Agent 响应渲染 UI）
@@ -272,6 +294,12 @@ export function AiProvider({
     });
 
     try {
+      // 调试：打印发送的历史记录
+      console.log('[AI] 发送消息，历史长度:', historyRef.current.length);
+      if (historyRef.current.length > 0) {
+        console.log('[AI] 历史内容:', historyRef.current.map(h => ({ role: h.role, content: h.content.substring(0, 50) })));
+      }
+
       // 调用 Agent API（传递 sessionId 以保持工作流状态）
       const response: AgentChatResponse = await sendAgentMessage({
         message,
@@ -292,7 +320,14 @@ export function AiProvider({
         pendingToolCalls: response.pendingToolCalls,
         predictedActions: response.predictedActions,
         uiSpec: response.uiSpec,
+        taskList: response.taskList,
       });
+
+      // 更新当前任务列表（V2 架构）
+      if (response.taskList) {
+        setCurrentTaskList(response.taskList);
+        console.log('[AI] 更新任务列表:', response.taskList.mapName, response.taskList.status);
+      }
 
       // 更新对话历史
       historyRef.current.push({
@@ -313,54 +348,36 @@ export function AiProvider({
         } : null);
       }
 
-      // 🔴 如果有工具执行结果，自动让 AI 总结
-      if (response.toolResults && response.toolResults.length > 0) {
-        // 把工具结果作为系统消息加入历史
-        const resultsText = response.toolResults
-          .map(r => `[工具执行结果] ${r.toolId}: ${JSON.stringify(r.result.data)}`)
-          .join('\n');
-        historyRef.current.push({
-          role: 'user',
-          content: `请根据以下工具执行结果回复用户：\n${resultsText}`,
-        });
+    } catch (error) {
+      console.error('[AI] 发送消息失败:', error);
 
-        // 自动请求 AI 总结结果
-        const summaryResponse = await sendAgentMessage({
-          message: '请总结上述工具返回的结果',
-          history: historyRef.current,
-          context: pageContext,
-          sessionId: sessionIdRef.current || undefined,
-        });
+      // 构建友好的错误消息
+      let errorMessage = '抱歉，AI 服务暂时不可用。';
+      let suggestionText = '';
 
-        // 更新显示的 AI 回复
-        updateLastMessage({
-          content: summaryResponse.content,
-          status: 'complete',
-          uiSpec: summaryResponse.uiSpec,
-        });
-
-        // 更新历史
-        historyRef.current.push({
-          role: 'assistant',
-          content: summaryResponse.content,
-        });
-
-        // 处理 UI
-        if (summaryResponse.uiSpec) {
-          handleUISpec(summaryResponse.uiSpec);
+      if (error instanceof Error) {
+        // 尝试解析 API 返回的错误
+        try {
+          const apiError = JSON.parse(error.message);
+          if (apiError.explanation) {
+            errorMessage = apiError.explanation.userMessage || errorMessage;
+            suggestionText = apiError.explanation.suggestion || '';
+          }
+        } catch {
+          errorMessage = error.message || errorMessage;
         }
       }
 
-    } catch (error) {
-      console.error('[AI] 发送消息失败:', error);
       updateLastMessage({
-        content: `抱歉，AI 服务暂时不可用。\n\n错误: ${error instanceof Error ? error.message : '未知错误'}`,
+        content: suggestionText
+          ? `${errorMessage}\n\n💡 建议: ${suggestionText}`
+          : errorMessage,
         status: 'error',
       });
     } finally {
       setIsThinking(false);
     }
-  }, [addMessage, updateLastMessage, pageContext, handleUISpec]);
+  }, [addMessage, updateLastMessage, pageContext, handleUISpec, canvasForm]);
 
   // 确认并执行待处理的工具调用
   const confirmTools = React.useCallback(async (toolCalls: ToolCallRequest[]) => {
@@ -369,12 +386,17 @@ export function AiProvider({
     try {
       const results = await confirmToolCalls(toolCalls);
 
-      // 显示执行结果
+      // 显示执行结果（使用友好的错误消息）
       const resultMessages = results.map(r => {
         if (r.result.success) {
           return `✅ ${r.toolId}: 执行成功`;
         } else {
-          return `❌ ${r.toolId}: ${r.result.error?.message || '执行失败'}`;
+          // 优先使用 userMessage（友好消息），其次是 message（技术消息）
+          const errorMsg = r.result.error?.userMessage || r.result.error?.message || '执行失败';
+          const suggestion = r.result.error?.suggestion;
+          return suggestion
+            ? `❌ ${r.toolId}: ${errorMsg}\n   💡 ${suggestion}`
+            : `❌ ${r.toolId}: ${errorMsg}`;
         }
       }).join('\n');
 
@@ -473,6 +495,7 @@ export function AiProvider({
     setInputValue,
     isThinking,
     setIsThinking,
+    currentTaskList,
     activeCapability,
     quickActions,
     triggerQuickAction,
@@ -495,6 +518,7 @@ export function AiProvider({
     clearMessages,
     inputValue,
     isThinking,
+    currentTaskList,
     activeCapability,
     quickActions,
     triggerQuickAction,

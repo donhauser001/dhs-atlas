@@ -219,6 +219,48 @@ const treeData: Permission[] = [
             { title: '日志查看', key: 'settings:logs' },
         ],
     },
+    {
+        title: 'AI 工具',
+        key: 'ai',
+        children: [
+            { title: '全部 AI 权限', key: 'ai:*' },
+            {
+                title: '数据库操作',
+                key: 'ai:db',
+                children: [
+                    { title: '数据库查询', key: 'ai:db.query' },
+                    { title: '数据库写入', key: 'ai:db.insert' },
+                    { title: '数据库更新', key: 'ai:db.update' },
+                    { title: '数据库删除', key: 'ai:db.delete' },
+                ],
+            },
+            {
+                title: '合同管理',
+                key: 'ai:contract',
+                children: [
+                    { title: '查看合同', key: 'ai:contract.view' },
+                    { title: '创建合同', key: 'ai:contract.create' },
+                    { title: '生成合同', key: 'ai:contract.generate' },
+                ],
+            },
+            {
+                title: '客户管理',
+                key: 'ai:crm',
+                children: [
+                    { title: '查看客户', key: 'ai:crm.view' },
+                    { title: '客户统计', key: 'ai:crm.contact_stats' },
+                ],
+            },
+            {
+                title: '项目管理',
+                key: 'ai:project',
+                children: [
+                    { title: '查看项目', key: 'ai:project.view' },
+                    { title: '项目统计', key: 'ai:project.stats' },
+                ],
+            },
+        ],
+    },
 ];
 
 export class PermissionService {

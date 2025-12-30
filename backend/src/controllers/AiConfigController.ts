@@ -1,18 +1,19 @@
 /**
  * AI 配置管理控制器
  * 
- * 管理 AI 工具集、数据模型、样例模板
+ * 管理 AI 工具集、样例模板、AI 地图
+ * 
+ * 注意：AiDataModel 已移除，数据结构现在由 DataMapService 自动从 Schema 提取
  */
 
 import { Request, Response } from 'express';
 import AiTool from '../models/AiToolkit';
-import AiDataModel from '../models/AiDataModel';
 import AiTemplate from '../models/AiTemplate';
 import AiMap from '../models/AiMap';
 
 class AiConfigController {
     // ==================== 工具集管理 ====================
-    
+
     async getTools(req: Request, res: Response) {
         try {
             const tools = await AiTool.find().sort({ order: 1 });
@@ -39,9 +40,9 @@ class AiConfigController {
             if (!tool) {
                 return res.status(404).json({ success: false, error: '工具不存在' });
             }
-            res.json({ success: true, data: tool });
+            return res.json({ success: true, data: tool });
         } catch (error) {
-            res.status(500).json({ success: false, error: '更新工具失败' });
+            return res.status(500).json({ success: false, error: '更新工具失败' });
         }
     }
 
@@ -55,52 +56,8 @@ class AiConfigController {
         }
     }
 
-    // ==================== 数据模型管理 ====================
-    
-    async getDataModels(req: Request, res: Response) {
-        try {
-            const models = await AiDataModel.find().sort({ order: 1 });
-            res.json({ success: true, data: models });
-        } catch (error) {
-            res.status(500).json({ success: false, error: '获取数据模型列表失败' });
-        }
-    }
-
-    async createDataModel(req: Request, res: Response) {
-        try {
-            const model = new AiDataModel(req.body);
-            await model.save();
-            res.json({ success: true, data: model });
-        } catch (error) {
-            res.status(500).json({ success: false, error: '创建数据模型失败' });
-        }
-    }
-
-    async updateDataModel(req: Request, res: Response) {
-        try {
-            const { id } = req.params;
-            const model = await AiDataModel.findByIdAndUpdate(id, req.body, { new: true });
-            if (!model) {
-                return res.status(404).json({ success: false, error: '数据模型不存在' });
-            }
-            res.json({ success: true, data: model });
-        } catch (error) {
-            res.status(500).json({ success: false, error: '更新数据模型失败' });
-        }
-    }
-
-    async deleteDataModel(req: Request, res: Response) {
-        try {
-            const { id } = req.params;
-            await AiDataModel.findByIdAndDelete(id);
-            res.json({ success: true });
-        } catch (error) {
-            res.status(500).json({ success: false, error: '删除数据模型失败' });
-        }
-    }
-
     // ==================== 样例模板管理 ====================
-    
+
     async getTemplates(req: Request, res: Response) {
         try {
             const templates = await AiTemplate.find().sort({ order: 1 });
@@ -127,9 +84,9 @@ class AiConfigController {
             if (!template) {
                 return res.status(404).json({ success: false, error: '样例模板不存在' });
             }
-            res.json({ success: true, data: template });
+            return res.json({ success: true, data: template });
         } catch (error) {
-            res.status(500).json({ success: false, error: '更新样例模板失败' });
+            return res.status(500).json({ success: false, error: '更新样例模板失败' });
         }
     }
 
@@ -144,7 +101,7 @@ class AiConfigController {
     }
 
     // ==================== AI 地图管理 ====================
-    
+
     async getMaps(req: Request, res: Response) {
         try {
             const maps = await AiMap.find().sort({ priority: -1, module: 1 });
@@ -171,9 +128,9 @@ class AiConfigController {
             if (!map) {
                 return res.status(404).json({ success: false, error: 'AI 地图不存在' });
             }
-            res.json({ success: true, data: map });
+            return res.json({ success: true, data: map });
         } catch (error) {
-            res.status(500).json({ success: false, error: '更新 AI 地图失败' });
+            return res.status(500).json({ success: false, error: '更新 AI 地图失败' });
         }
     }
 

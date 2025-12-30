@@ -70,9 +70,9 @@ router.post('/chat', async (req: Request, res: Response, next: NextFunction) => 
       apiUrl = aiModel.baseUrl || DEFAULT_LMSTUDIO_URL;
       modelName = aiModel.model || modelName;
       // 注意：API Key 默认不返回，需要显式选择
-      if (aiModel.apiKeySet) {
-        const fullModel = await AiModel.findById(aiModel._id).select('+apiKey');
-        apiKey = fullModel?.apiKey;
+      const fullModel = await AiModel.findById(aiModel._id).select('+apiKey');
+      if (fullModel?.apiKey) {
+        apiKey = fullModel.apiKey;
       }
     }
 

@@ -125,8 +125,10 @@ export default function FileCenterPage() {
   const deleteFile = useDeleteFile();
 
   // 安全获取数据，兼容不同的响应格式
-  const files = data?.data?.files || data?.files || (Array.isArray(data?.data) ? data.data : []);
-  const pagination = data?.data?.pagination || data?.pagination;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const responseData = data as any;
+  const files = responseData?.data?.files || responseData?.files || (Array.isArray(responseData?.data) ? responseData.data : []);
+  const pagination = responseData?.data?.pagination || responseData?.pagination;
 
   const handleDelete = () => {
     if (deleteId) {

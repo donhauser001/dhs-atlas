@@ -8,10 +8,6 @@ import {
     createAiTool,
     updateAiTool,
     deleteAiTool,
-    getAiDataModels,
-    createAiDataModel,
-    updateAiDataModel,
-    deleteAiDataModel,
     getAiTemplates,
     createAiTemplate,
     updateAiTemplate,
@@ -21,7 +17,6 @@ import {
     updateAiMap,
     deleteAiMap,
     type AiTool,
-    type AiDataModel,
     type AiTemplate,
     type AiMap,
 } from '@/api/ai-config';
@@ -65,45 +60,6 @@ export function useDeleteAiTool() {
     });
 }
 
-// ==================== 数据模型 Hooks ====================
-
-export function useAiDataModels() {
-    return useQuery({
-        queryKey: ['ai-data-models'],
-        queryFn: getAiDataModels,
-    });
-}
-
-export function useCreateAiDataModel() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: createAiDataModel,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['ai-data-models'] });
-        },
-    });
-}
-
-export function useUpdateAiDataModel() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: ({ id, data }: { id: string; data: Partial<AiDataModel> }) => updateAiDataModel(id, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['ai-data-models'] });
-        },
-    });
-}
-
-export function useDeleteAiDataModel() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: deleteAiDataModel,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['ai-data-models'] });
-        },
-    });
-}
-
 // ==================== 样例模板 Hooks ====================
 
 export function useAiTemplates() {
@@ -141,6 +97,13 @@ export function useDeleteAiTemplate() {
             queryClient.invalidateQueries({ queryKey: ['ai-templates'] });
         },
     });
+}
+
+// ==================== AI 数据模型 Hook（已废弃，保留兼容） ====================
+
+export function useAiDataModels() {
+    // AiDataModel 已被 DataMapService 替代，返回空数组保持兼容
+    return { data: [], isLoading: false };
 }
 
 // ==================== AI 地图 Hooks ====================

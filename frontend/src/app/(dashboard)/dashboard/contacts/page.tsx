@@ -127,14 +127,14 @@ export default function ContactsPage() {
         const projectsResponse = await projectApi.getList({ limit: 1000 });
         const projectsData = projectsResponse?.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
         const counts: Record<string, number> = {};
-        projectsData.forEach((project: { contactId?: string }) => {
-          const contactId = project.contactId;
+        projectsData.forEach((project) => {
+          const contactId = (project as unknown as { contactId?: string }).contactId;
           if (contactId) {
             counts[contactId] = (counts[contactId] || 0) + 1;
           }
         });
         setProjectCounts(counts);
-      } catch {
+      } catch (error) {
         console.error('获取数据失败:', error);
         toast.error('获取数据失败');
       } finally {
@@ -245,15 +245,12 @@ export default function ContactsPage() {
         username: newContact.phone || `contact_${Date.now()}`,
         password: '123456', // 默认密码
         realName: newContact.realName,
-        phone: newContact.phone,
+        phone: newContact.phone || '',
         email: newContact.email,
-        company: newContact.company,
         position: newContact.position,
-        address: newContact.address,
-        notes: newContact.notes,
         role: '客户',
-        status: 'active',
-      });
+        department: '',
+      } as Parameters<typeof userApi.create>[0]);
       toast.success('联系人创建成功');
       setCreateDialogOpen(false);
       setNewContact({

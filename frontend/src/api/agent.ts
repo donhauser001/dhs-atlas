@@ -1,6 +1,8 @@
 /**
  * Agent API 客户端
  * 
+ * V2 架构：智能 AI + 系统守门
+ * 
  * 与后端 Agent Service 交互
  */
 
@@ -14,6 +16,18 @@ export interface ToolCallRequest {
     requestId?: string;
 }
 
+/**
+ * 结构化错误（Phase 2 增强）
+ */
+export interface StructuredError {
+    code: string;
+    message: string;
+    reasonCode: string;
+    userMessage: string;
+    suggestion?: string;
+    canRetry: boolean;
+}
+
 export interface ToolResult {
     success: boolean;
     data?: unknown;
@@ -24,10 +38,8 @@ export interface ToolResult {
     };
     nextHints?: string[];
     uiSuggestion?: UISpec;
-    error?: {
-        code: string;
-        message: string;
-    };
+    /** 结构化错误信息（Phase 2） */
+    error?: StructuredError;
 }
 
 export interface UISpec {
@@ -54,6 +66,61 @@ export interface PageContext {
     pathname: string;
     entityId?: string;
     selectedIds?: string[];
+}
+
+// ============ 任务列表类型（V2 架构） ============
+
+/**
+ * 任务状态
+ */
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+/**
+ * 任务项（对应地图的一个步骤）
+ */
+export interface TaskItem {
+    /** 步骤序号（从 1 开始） */
+    stepNumber: number;
+    /** 任务名称 */
+    name: string;
+    /** 任务描述 */
+    description: string;
+    /** 对应的工具 ID */
+    toolId: string;
+    /** 任务状态 */
+    status: TaskStatus;
+    /** 执行结果摘要（成功时显示） */
+    resultSummary?: string;
+    /** 错误信息（失败时显示） */
+    error?: string;
+    /** 开始时间 */
+    startTime?: string;
+    /** 结束时间 */
+    endTime?: string;
+}
+
+/**
+ * 任务列表（地图执行时的整体进度）
+ */
+export interface TaskList {
+    /** 任务列表 ID */
+    id: string;
+    /** 关联的地图 ID */
+    mapId: string;
+    /** 地图名称 */
+    mapName: string;
+    /** 任务列表 */
+    tasks: TaskItem[];
+    /** 当前执行的步骤（从 1 开始，0 表示未开始） */
+    currentStep: number;
+    /** 总步骤数 */
+    totalSteps: number;
+    /** 整体状态 */
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    /** 创建时间 */
+    createdAt: string;
+    /** 更新时间 */
+    updatedAt: string;
 }
 
 export interface AgentMessage {
@@ -86,6 +153,17 @@ export interface AgentChatResponse {
     sessionId?: string;
     /** 表单字段更新 */
     formUpdates?: Record<string, unknown>;
+    /** 友好错误解释（Phase 2 增强） */
+    explanation?: {
+        userMessage: string;
+        suggestion?: string;
+        canRetry: boolean;
+    };
+    /** 
+     * 任务列表（V2 架构）
+     * 地图执行时返回，让用户看到执行进度
+     */
+    taskList?: TaskList;
 }
 
 export interface AgentStatusResponse {
@@ -175,4 +253,3 @@ const agentApi = {
 };
 
 export default agentApi;
-

@@ -7,7 +7,7 @@
  * 3. LLM 自己决定说什么、调用什么
  */
 
-import type { UISpec } from '../tools/types';
+import type { UISpec } from '../agent/types';
 
 // ============ 工作流状态 ============
 

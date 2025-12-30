@@ -1,5 +1,21 @@
 import axios from 'axios';
-import { UploadFile } from 'antd';
+
+// UploadFile 类型（兼容 antd）
+interface UploadFile {
+    uid: string;
+    name: string;
+    size?: number;
+    status?: 'uploading' | 'done' | 'error' | 'removed';
+    url?: string;
+    response?: {
+        path?: string;
+        url?: string;
+        data?: {
+            url?: string;
+            path?: string;
+        };
+    };
+}
 
 // 发票接口定义
 export interface Invoice {

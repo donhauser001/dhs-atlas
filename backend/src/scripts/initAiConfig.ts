@@ -1,7 +1,9 @@
 /**
  * AI 配置初始化脚本
  * 
- * 初始化 AI 工具集、数据模型、样例模板
+ * 初始化 AI 工具集、样例模板、AI 地图
+ * 
+ * 注意：AiDataModel 已移除，数据结构现在由 DataMapService 自动从 Schema 提取
  * 
  * 运行方式：
  * docker exec donhauser-backend npx ts-node --transpile-only src/scripts/initAiConfig.ts
@@ -9,7 +11,6 @@
 
 import mongoose from 'mongoose';
 import AiTool from '../models/AiToolkit';
-import AiDataModel from '../models/AiDataModel';
 import AiTemplate from '../models/AiTemplate';
 import AiMap from '../models/AiMap';
 
@@ -20,13 +21,13 @@ async function initAiConfig() {
         await mongoose.connect(MONGODB_URI);
         console.log('✅ 数据库连接成功');
 
-        // 初始化工具集
+        // 初始化工具集（全部配置化，包含执行逻辑）
         console.log('\n📦 初始化工具集...');
         const tools = [
             {
                 toolId: 'db.query',
                 name: '数据库查询',
-                description: '执行 MongoDB 查询，获取数据。可以查询客户、项目、报价单等任何白名单中的数据。',
+                description: '执行 MongoDB 查询，获取数据。可以查询客户、项目、报价单等任何集合的数据。',
                 usage: `\`\`\`tool_call
 {
   "toolId": "db.query",
@@ -55,11 +56,35 @@ async function initAiConfig() {
                 category: 'database',
                 enabled: true,
                 order: 1,
+                // 通用数据库查询工具 - 直接透传参数执行
+                execution: {
+                    type: 'simple',
+                    collection: '{{params.collection}}',
+                    operation: '{{params.operation}}',
+                    query: '{{params.query}}',
+                    projection: '{{params.projection}}',
+                    sort: '{{params.sort}}',
+                    limit: '{{params.limit || 20}}',
+                    pipeline: '{{params.pipeline}}',
+                },
+                paramsSchema: {
+                    type: 'object',
+                    properties: {
+                        collection: { type: 'string', description: '集合名称' },
+                        operation: { type: 'string', enum: ['find', 'findOne', 'aggregate', 'count'] },
+                        query: { type: 'object', description: '查询条件' },
+                        projection: { type: 'object', description: '投影' },
+                        sort: { type: 'object', description: '排序' },
+                        limit: { type: 'number', default: 20 },
+                        pipeline: { type: 'array', description: '聚合管道' },
+                    },
+                    required: ['collection', 'operation'],
+                },
             },
             {
                 toolId: 'ui.form',
                 name: '打开表单',
-                description: '在画布上打开新建或编辑表单。支持预填数据。',
+                description: '在画布上打开新建或编辑表单。这是一个前端 UI 工具，AI 输出此指令后，前端会自动打开对应表单。',
                 usage: `\`\`\`ui_form
 {
   "formId": "client-create",
@@ -79,6 +104,8 @@ async function initAiConfig() {
                 category: 'ui',
                 enabled: true,
                 order: 2,
+                // UI 工具不需要后端执行，前端解析 AI 输出并处理
+                execution: null,
             },
             {
                 toolId: 'ai.capabilities',
@@ -91,6 +118,45 @@ async function initAiConfig() {
                 category: 'system',
                 enabled: true,
                 order: 0,
+                // 查询 AI 自身能力 - 从数据库获取工具、数据模型、模板列表
+                execution: {
+                    type: 'pipeline',
+                    steps: [
+                        {
+                            name: 'get_tools',
+                            type: 'db_query',
+                            collection: 'aitools',
+                            query: { enabled: true },
+                            projection: { toolId: 1, name: 1, description: 1, category: 1 },
+                            sort: { order: 1 },
+                        },
+                        {
+                            name: 'get_models',
+                            type: 'db_query',
+                            collection: 'aidatamodels',
+                            query: { enabled: true },
+                            projection: { collection: 1, name: 1, description: 1 },
+                            sort: { order: 1 },
+                        },
+                        {
+                            name: 'get_templates',
+                            type: 'db_query',
+                            collection: 'aitemplates',
+                            query: { enabled: true },
+                            projection: { templateId: 1, name: 1, scenario: 1 },
+                            sort: { order: 1 },
+                        },
+                        {
+                            name: 'return_result',
+                            type: 'return',
+                            result: {
+                                tools: '{{steps.get_tools}}',
+                                dataModels: '{{steps.get_models}}',
+                                templates: '{{steps.get_templates}}',
+                            },
+                        },
+                    ],
+                },
             },
             {
                 toolId: 'crm.contact_stats',
@@ -111,6 +177,53 @@ async function initAiConfig() {
                 category: 'crm',
                 enabled: true,
                 order: 3,
+                // 联系人项目统计 - 使用聚合管道
+                execution: {
+                    type: 'pipeline',
+                    steps: [
+                        {
+                            name: 'find_client',
+                            type: 'db_query',
+                            collection: 'clients',
+                            query: { name: { $regex: '{{params.clientName}}', $options: 'i' } },
+                            single: true,
+                        },
+                        {
+                            name: 'get_projects',
+                            type: 'db_aggregate',
+                            collection: 'projects',
+                            pipeline: [
+                                { $match: { clientName: { $regex: '{{params.clientName}}', $options: 'i' } } },
+                                { $unwind: { path: '$contactNames', preserveNullAndEmptyArrays: true } },
+                                {
+                                    $group: {
+                                        _id: '$contactNames',
+                                        projectCount: { $sum: 1 },
+                                        projects: { $push: '$projectName' },
+                                    },
+                                },
+                                { $sort: { projectCount: -1 } },
+                            ],
+                        },
+                        {
+                            name: 'return_result',
+                            type: 'return',
+                            result: {
+                                clientName: '{{params.clientName}}',
+                                client: '{{steps.find_client}}',
+                                contacts: '{{steps.get_projects}}',
+                            },
+                        },
+                    ],
+                },
+                paramsSchema: {
+                    type: 'object',
+                    properties: {
+                        clientName: { type: 'string', description: '客户名称' },
+                        includeAmount: { type: 'boolean', default: false },
+                    },
+                    required: ['clientName'],
+                },
             },
         ];
 
@@ -123,120 +236,8 @@ async function initAiConfig() {
             console.log(`  ✓ ${tool.name} (${tool.toolId})`);
         }
 
-        // 初始化数据模型
-        console.log('\n📊 初始化数据模型...');
-        const dataModels = [
-            {
-                collection: 'clients',
-                name: '客户表',
-                description: '存储所有客户信息，包括基本资料和开票信息',
-                fields: `- \`_id\`: ObjectId (主键)
-- \`name\`: string (客户名称，必填)
-- \`address\`: string (地址)
-- \`invoiceType\`: '增值税专用发票' | '增值税普通发票' | '不开票' (发票类型)
-- \`invoiceInfo\`: string (开票信息，包含纳税人识别号等)
-- \`category\`: string (客户分类，关联 clientcategories)
-- \`rating\`: number 1-5 (评级)
-- \`summary\`: string (备注/摘要)
-- \`status\`: 'active' | 'inactive' (状态)
-- \`createTime\`, \`updateTime\`: Date (创建/更新时间)`,
-                relations: `- \`projects\` (项目表): 通过 \`clientId\` 关联，一个客户可有多个项目
-- \`quotations\` (报价单表): 通过 \`clientId\` 关联，一个客户可有多个报价单
-- \`clientcategories\` (客户分类表): 通过 \`category\` 字段名称关联`,
-                queryExamples: `**按名称查询**
-\`\`\`json
-{"name": "中信出版社"}
-\`\`\`
-
-**模糊搜索**
-\`\`\`json
-{"name": {"$regex": "出版", "$options": "i"}}
-\`\`\``,
-                enabled: true,
-                order: 1,
-            },
-            {
-                collection: 'projects',
-                name: '项目表',
-                description: '存储项目信息，包含客户、联系人、金额等',
-                fields: `- \`_id\`: ObjectId (主键)
-- \`projectName\`: string (项目名称)
-- \`clientId\`: ObjectId (关联客户ID)
-- \`clientName\`: string (客户名称，冗余字段)
-- \`contactIds\`: ObjectId[] (联系人ID数组)
-- \`contactNames\`: string[] (联系人姓名数组)
-- \`contactPhones\`: string[] (联系人电话数组)
-- \`progressStatus\`: 'pending' | 'in-progress' | 'completed' | 'cancelled' (进度状态)
-- \`settlementStatus\`: 'unpaid' | 'partial' | 'paid' (结算状态)
-- \`createdAt\`, \`updatedAt\`: Date`,
-                relations: `- \`clients\` (客户表): 通过 \`clientId\` 关联
-- \`settlements\` (结算表): 通过 \`projectId\` 关联`,
-                queryExamples: `**查询某客户的所有项目**
-\`\`\`json
-{"clientName": {"$regex": "中信", "$options": "i"}}
-\`\`\`
-
-**按状态筛选**
-\`\`\`json
-{"progressStatus": "in-progress"}
-\`\`\``,
-                enabled: true,
-                order: 2,
-            },
-            {
-                collection: 'settlements',
-                name: '结算表',
-                description: '存储项目结算/付款信息',
-                fields: `- \`_id\`: ObjectId (主键)
-- \`projectId\`: ObjectId (关联项目)
-- \`totalAmount\`: number (结算金额)
-- \`status\`: 'pending' | 'completed' (结算状态)
-- \`createdAt\`: Date`,
-                relations: `- \`projects\` (项目表): 通过 \`projectId\` 关联`,
-                queryExamples: `**查询某项目的结算**
-\`\`\`json
-{"projectId": ObjectId("xxx")}
-\`\`\``,
-                enabled: true,
-                order: 3,
-            },
-            {
-                collection: 'quotations',
-                name: '报价单表',
-                description: '存储报价单信息',
-                fields: `- \`_id\`: ObjectId (主键)
-- \`clientId\`: ObjectId (关联客户)
-- \`items\`: array (报价项)
-- \`totalAmount\`: number (总金额)
-- \`status\`: string (状态)
-- \`createdAt\`, \`updatedAt\`: Date`,
-                relations: `- \`clients\` (客户表): 通过 \`clientId\` 关联`,
-                queryExamples: '',
-                enabled: true,
-                order: 4,
-            },
-            {
-                collection: 'clientcategories',
-                name: '客户分类表',
-                description: '客户分类字典表',
-                fields: `- \`_id\`: ObjectId
-- \`name\`: string (分类名称)
-- \`status\`: 'active' | 'inactive'`,
-                relations: `- \`clients\` (客户表): 通过 \`category\` 字段名称关联`,
-                queryExamples: '',
-                enabled: true,
-                order: 5,
-            },
-        ];
-
-        for (const model of dataModels) {
-            await AiDataModel.updateOne(
-                { collection: model.collection },
-                { $set: model },
-                { upsert: true }
-            );
-            console.log(`  ✓ ${model.name} (${model.collection})`);
-        }
+        // 注意：AiDataModel 已移除，数据结构现在由 DataMapService 自动从 Schema 提取
+        console.log('\n📊 数据模型已废弃，由 DataMapService 自动从 Schema 提取');
 
         // 初始化样例模板
         console.log('\n📝 初始化样例模板...');
