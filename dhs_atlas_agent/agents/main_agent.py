@@ -22,8 +22,9 @@ def _build_tools_description() -> str:
     for tool_func in ALL_TOOLS:
         name = tool_func.__name__
         desc = getattr(tool_func, '_tool_description', '') or tool_func.__doc__ or ''
-        # 只取第一行作为简短描述
-        short_desc = desc.split('\n')[0].strip()
+        # 清理并取第一个非空行作为简短描述
+        desc_lines = [line.strip() for line in desc.split('\n') if line.strip()]
+        short_desc = desc_lines[0] if desc_lines else '无描述'
         lines.append(f"- **{name}**: {short_desc}")
     return '\n'.join(lines)
 
