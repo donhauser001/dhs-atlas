@@ -294,7 +294,7 @@ class DHSAtlasAgent:
             messages.append({"role": "assistant", "content": response})
             messages.append({
                 "role": "user",
-                "content": f"工具执行结果:\n\n" + "\n\n".join(tool_results_text) + "\n\n请根据结果用中文回答用户问题，使用 Markdown 表格展示数据。"
+                "content": f"/no_think\n\n工具执行结果:\n\n" + "\n\n".join(tool_results_text) + "\n\n请根据结果用中文回答用户问题，使用 Markdown 表格展示数据。不要思考，直接回答。"
             })
         
         # 达到最大轮数
