@@ -28,8 +28,32 @@ def _build_tools_description() -> str:
     return '\n'.join(lines)
 
 
-# Agent 系统提示词
-SYSTEM_PROMPT = f"""你是 DHS-Atlas 企业管理系统的 AI 助手「鲁班」。
+def _load_ai_config() -> dict:
+    """从数据库加载 AI 配置"""
+    try:
+        from dhs_atlas_agent.models import get_db
+        db = get_db()
+        if db is None:
+            return {}
+        config = db['ai_configs'].find_one()
+        return config or {}
+    except Exception as e:
+        print(f"[Agent] 加载 AI 配置失败: {e}")
+        return {}
+
+
+def _build_system_prompt(base_prompt: str = None) -> str:
+    """构建完整的系统提示词
+    
+    Args:
+        base_prompt: 基础提示词（来自数据库或默认）
+    """
+    # 默认基础提示词
+    if not base_prompt:
+        base_prompt = "你是 DHS-Atlas 企业管理系统的 AI 助手「鲁班」，专注于帮助用户处理客户管理、报价、项目等业务问题。"
+    
+    # 工具相关的提示词（必须有）
+    tools_prompt = f"""
 
 ## 核心规则
 
@@ -76,6 +100,8 @@ SYSTEM_PROMPT = f"""你是 DHS-Atlas 企业管理系统的 AI 助手「鲁班」
 - **必须先调用工具获取数据，再基于工具返回的数据回答**
 - **禁止说"系统限制"、"无法获取"等，必须尝试调用工具**"""
 
+    return base_prompt + tools_prompt
+
 
 @dataclass
 class ChatMessage:
@@ -102,9 +128,23 @@ class DHSAtlasAgent:
         model_name: str = None,
         api_key: str = None,
     ):
-        self.llm_base_url = (llm_base_url or LLM_BASE_URL).rstrip('/')
-        self.model_name = model_name or LLM_MODEL
-        self.api_key = api_key or LLM_API_KEY
+        # 从数据库加载配置
+        ai_config = _load_ai_config()
+        
+        # LLM 配置（优先使用参数，其次数据库，最后环境变量）
+        self.llm_base_url = (
+            llm_base_url or 
+            ai_config.get('llmBaseURL', '').replace('/v1', '') or 
+            LLM_BASE_URL
+        ).rstrip('/')
+        self.model_name = model_name or ai_config.get('llmModel') or LLM_MODEL
+        self.api_key = api_key or ai_config.get('llmApiKey') or LLM_API_KEY
+        self.temperature = ai_config.get('temperature', 0.7)
+        self.max_tokens = ai_config.get('maxTokens', 4096)
+        
+        # 系统提示词（从数据库加载）
+        base_prompt = ai_config.get('systemPrompt')
+        self.system_prompt = _build_system_prompt(base_prompt)
         
         # 工具映射
         self._tools = {func.__name__: func for func in ALL_TOOLS}
@@ -116,6 +156,7 @@ class DHSAtlasAgent:
         print(f"  - LLM: {self.llm_base_url}")
         print(f"  - Model: {self.model_name}")
         print(f"  - Tools: {len(self._tools)}")
+        print(f"  - 提示词来源: {'数据库' if base_prompt else '默认'}")
     
     def _parse_tool_calls(self, response: str) -> List[Dict]:
         """解析工具调用"""
@@ -158,8 +199,8 @@ class DHSAtlasAgent:
                 json={
                     "model": self.model_name,
                     "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 4096,
+                    "temperature": self.temperature,
+                    "max_tokens": self.max_tokens,
                 },
             )
             
@@ -181,7 +222,7 @@ class DHSAtlasAgent:
         
         # 构建消息 (OpenAI 格式)
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": message},
         ]
         
