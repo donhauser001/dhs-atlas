@@ -48,9 +48,14 @@ def _build_system_prompt(base_prompt: str = None) -> str:
     Args:
         base_prompt: 基础提示词（来自数据库或默认）
     """
+    # 禁用思考模式的指令（放在最前面）
+    no_think_prefix = "/no_think\n\n"
+    
     # 默认基础提示词
     if not base_prompt:
         base_prompt = "你是 DHS-Atlas 企业管理系统的 AI 助手「鲁班」，专注于帮助用户处理客户管理、报价、项目等业务问题。"
+    
+    base_prompt = no_think_prefix + base_prompt
     
     # 工具相关的提示词（必须有）
     tools_prompt = f"""
