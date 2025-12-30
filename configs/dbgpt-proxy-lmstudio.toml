@@ -1,0 +1,26 @@
+[system]
+language = "zh"
+api_keys = []
+encrypt_key = "your_secret_key"
+
+[service.web]
+host = "0.0.0.0"
+port = 5670
+
+[rag.storage]
+[rag.storage.vector]
+type = "chroma"
+persist_path = "pilot/data"
+
+[models]
+[[models.llms]]
+name = "qwen3-coder-30b"
+provider = "proxy/openai"
+api_base = "http://192.168.31.177:1234/v1"
+api_key = "lm-studio"
+
+[[models.embeddings]]
+name = "text-embedding"
+provider = "proxy/openai"
+api_url = "http://192.168.31.177:1234/v1"
+api_key = "lm-studio"

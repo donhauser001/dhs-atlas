@@ -7,8 +7,12 @@
 import type { DBGPTConfig, DBGPTMessage, DBGPTResponse, DBGPTStreamEvent } from './types';
 
 const DEFAULT_CONFIG: DBGPTConfig = {
-    baseUrl: process.env.DBGPT_BASE_URL || 'http://localhost:5670',
-    model: process.env.DBGPT_MODEL || 'qwen3-coder-30b',
+    // 支持两种模式：
+    // 1. DB-GPT 模式: DBGPT_BASE_URL=http://localhost:5670
+    // 2. LMStudio 直连模式: DBGPT_BASE_URL=http://192.168.31.177:1234 (推荐，更简单)
+    baseUrl: process.env.DBGPT_BASE_URL || 'http://192.168.31.177:1234',
+    model: process.env.DBGPT_MODEL || 'qwen/qwen3-coder-30b',
+    apiKey: process.env.DBGPT_API_KEY || 'lm-studio',
     temperature: 0.7,
     maxTokens: 4096,
     timeout: 60000,
@@ -81,7 +85,8 @@ export class DBGPTClient {
             usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         }
 
-        const response = await this.request<OpenAIResponse>('/api/v1/chat/completions', {
+        // LMStudio 使用 /v1/chat/completions，DB-GPT 使用 /api/v1/chat/completions
+        const response = await this.request<OpenAIResponse>('/v1/chat/completions', {
             method: 'POST',
             body: JSON.stringify({
                 model: this.config.model,
@@ -115,7 +120,8 @@ export class DBGPTClient {
     async *chatCompletionStream(
         messages: DBGPTMessage[]
     ): AsyncGenerator<DBGPTStreamEvent> {
-        const url = this.getEndpoint('/api/v1/chat/completions');
+        // LMStudio 使用 /v1/chat/completions
+        const url = this.getEndpoint('/v1/chat/completions');
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
             ...(this.config.apiKey && { 'Authorization': `Bearer ${this.config.apiKey}` }),
