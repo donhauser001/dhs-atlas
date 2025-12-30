@@ -212,6 +212,8 @@ class DHSAtlasAgent:
                     "messages": messages,
                     "temperature": self.temperature,
                     "max_tokens": self.max_tokens,
+                    # 禁用 qwen3 思考模式，加快响应速度
+                    "chat_template_kwargs": {"enable_thinking": False},
                 },
             )
             
