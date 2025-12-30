@@ -21,6 +21,7 @@ import {
 } from '@/lib/ai-capabilities';
 import {
   sendAgentMessage,
+  streamAgentMessage,
   confirmToolCalls,
   type AgentMessage,
   type AgentChatResponse,
@@ -29,6 +30,7 @@ import {
   type ToolCallRequest,
   type PageContext,
   type TaskList,
+  type SSEProgressCallbacks,
 } from '@/api/agent';
 
 // ============ Types ============
@@ -160,6 +162,9 @@ export function AiProvider({
   // 会话 ID（用于保持工作流状态）
   const sessionIdRef = React.useRef<string | null>(null);
 
+  // SSE 取消函数引用
+  const cancelStreamRef = React.useRef<(() => void) | null>(null);
+
   // 组件挂载时重置状态（确保刷新后清空）
   React.useEffect(() => {
     console.log('[AI] Provider 挂载，重置状态');
@@ -271,9 +276,15 @@ export function AiProvider({
     }
   }, []);
 
-  // 发送消息给 Agent
+  // 发送消息给 Agent（使用 SSE 实时反馈）
   const sendMessage = React.useCallback(async (message: string) => {
     if (!message.trim()) return;
+
+    // 取消之前的流式请求
+    if (cancelStreamRef.current) {
+      cancelStreamRef.current();
+      cancelStreamRef.current = null;
+    }
 
     // 添加用户消息
     addMessage({
@@ -293,90 +304,116 @@ export function AiProvider({
       status: 'streaming',
     });
 
-    try {
-      // 调试：打印发送的历史记录
-      console.log('[AI] 发送消息，历史长度:', historyRef.current.length);
-      if (historyRef.current.length > 0) {
-        console.log('[AI] 历史内容:', historyRef.current.map(h => ({ role: h.role, content: h.content.substring(0, 50) })));
-      }
+    // 调试：打印发送的历史记录
+    console.log('[AI] 发送消息（SSE），历史长度:', historyRef.current.length);
 
-      // 调用 Agent API（传递 sessionId 以保持工作流状态）
-      const response: AgentChatResponse = await sendAgentMessage({
+    // SSE 回调处理
+    const callbacks: SSEProgressCallbacks = {
+      onTaskStart: (taskList) => {
+        console.log('[AI SSE] 任务开始:', taskList.mapName);
+        setCurrentTaskList(taskList);
+      },
+
+      onStepStart: (taskList, stepNumber, stepName) => {
+        console.log('[AI SSE] 步骤开始:', stepNumber, stepName);
+        setCurrentTaskList(taskList);
+      },
+
+      onStepComplete: (taskList, stepNumber, stepName) => {
+        console.log('[AI SSE] 步骤完成:', stepNumber, stepName);
+        setCurrentTaskList(taskList);
+      },
+
+      onStepFailed: (taskList, stepNumber, error) => {
+        console.error('[AI SSE] 步骤失败:', stepNumber, error);
+        setCurrentTaskList(taskList);
+      },
+
+      onToolCall: (toolId) => {
+        console.log('[AI SSE] 工具调用:', toolId);
+        // 可以在这里更新 UI 显示正在执行的工具
+      },
+
+      onToolResult: (toolId, success) => {
+        console.log('[AI SSE] 工具结果:', toolId, success ? '成功' : '失败');
+      },
+
+      onMessage: (content) => {
+        console.log('[AI SSE] AI 消息:', content.substring(0, 50) + '...');
+        // 更新消息内容（实时显示）
+        updateLastMessage({
+          content,
+          status: 'streaming',
+        });
+      },
+
+      onComplete: (response) => {
+        console.log('[AI SSE] 任务完成');
+        
+        // 保存返回的 sessionId
+        if (response.sessionId) {
+          sessionIdRef.current = response.sessionId;
+        }
+
+        // 更新最终 AI 回复
+        updateLastMessage({
+          content: response.content,
+          status: 'complete',
+          pendingToolCalls: response.pendingToolCalls,
+          predictedActions: response.predictedActions,
+          uiSpec: response.uiSpec,
+          taskList: response.taskList,
+        });
+
+        // 更新任务列表
+        if (response.taskList) {
+          setCurrentTaskList(response.taskList);
+        }
+
+        // 更新对话历史
+        historyRef.current.push({
+          role: 'assistant',
+          content: response.content,
+        });
+
+        // 处理 UI 渲染请求
+        if (response.uiSpec) {
+          handleUISpec(response.uiSpec);
+        }
+
+        // 处理表单字段更新
+        if (response.formUpdates && canvasForm) {
+          setCanvasForm(prev => prev ? {
+            ...prev,
+            initialData: { ...prev.initialData, ...response.formUpdates },
+          } : null);
+        }
+
+        setIsThinking(false);
+        cancelStreamRef.current = null;
+      },
+
+      onError: (error) => {
+        console.error('[AI SSE] 错误:', error);
+        updateLastMessage({
+          content: `抱歉，AI 服务出现错误：${error}`,
+          status: 'error',
+        });
+        setIsThinking(false);
+        cancelStreamRef.current = null;
+      },
+    };
+
+    // 启动 SSE 流式请求
+    cancelStreamRef.current = streamAgentMessage(
+      {
         message,
         history: historyRef.current,
         context: pageContext,
         sessionId: sessionIdRef.current || undefined,
-      });
-
-      // 保存返回的 sessionId（用于后续请求）
-      if (response.sessionId) {
-        sessionIdRef.current = response.sessionId;
-      }
-
-      // 更新 AI 回复
-      updateLastMessage({
-        content: response.content,
-        status: 'complete',
-        pendingToolCalls: response.pendingToolCalls,
-        predictedActions: response.predictedActions,
-        uiSpec: response.uiSpec,
-        taskList: response.taskList,
-      });
-
-      // 更新当前任务列表（V2 架构）
-      if (response.taskList) {
-        setCurrentTaskList(response.taskList);
-        console.log('[AI] 更新任务列表:', response.taskList.mapName, response.taskList.status);
-      }
-
-      // 更新对话历史
-      historyRef.current.push({
-        role: 'assistant',
-        content: response.content,
-      });
-
-      // 处理 UI 渲染请求
-      if (response.uiSpec) {
-        handleUISpec(response.uiSpec);
-      }
-
-      // 处理表单字段更新
-      if (response.formUpdates && canvasForm) {
-        setCanvasForm(prev => prev ? {
-          ...prev,
-          initialData: { ...prev.initialData, ...response.formUpdates },
-        } : null);
-      }
-
-    } catch (error) {
-      console.error('[AI] 发送消息失败:', error);
-
-      // 构建友好的错误消息
-      let errorMessage = '抱歉，AI 服务暂时不可用。';
-      let suggestionText = '';
-
-      if (error instanceof Error) {
-        // 尝试解析 API 返回的错误
-        try {
-          const apiError = JSON.parse(error.message);
-          if (apiError.explanation) {
-            errorMessage = apiError.explanation.userMessage || errorMessage;
-            suggestionText = apiError.explanation.suggestion || '';
-          }
-        } catch {
-          errorMessage = error.message || errorMessage;
-        }
-      }
-
-      updateLastMessage({
-        content: suggestionText
-          ? `${errorMessage}\n\n💡 建议: ${suggestionText}`
-          : errorMessage,
-        status: 'error',
-      });
-    } finally {
-      setIsThinking(false);
-    }
+      },
+      callbacks
+    );
   }, [addMessage, updateLastMessage, pageContext, handleUISpec, canvasForm]);
 
   // 确认并执行待处理的工具调用

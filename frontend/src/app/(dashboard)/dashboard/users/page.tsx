@@ -110,7 +110,6 @@ export default function UsersPage() {
         phone: newUser.phone,
         role: newUser.role,
         department: newUser.department,
-        status: 'active',
       });
       setCreateDialogOpen(false);
       setNewUser({

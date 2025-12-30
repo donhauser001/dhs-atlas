@@ -3,40 +3,19 @@
  * 
  * 使用 SSE (Server-Sent Events) 实现实时反馈
  * 每个步骤完成后立即推送更新到前端
+ * 
+ * 符合宪章要求：禁止假进度条，实现真正的实时反馈
  */
 
 import { Request, Response } from 'express';
 import { processAgentRequest } from '../ai/agent/agent-service';
-import type { AgentRequest, PageContext } from '../ai/agent/types';
-
-/**
- * SSE 事件类型
- */
-export enum SSEEventType {
-    // 任务开始
-    TASK_START = 'task_start',
-    // 步骤开始
-    STEP_START = 'step_start',
-    // 步骤完成
-    STEP_COMPLETE = 'step_complete',
-    // 步骤失败
-    STEP_FAILED = 'step_failed',
-    // 工具调用
-    TOOL_CALL = 'tool_call',
-    // 工具结果
-    TOOL_RESULT = 'tool_result',
-    // AI 消息
-    AI_MESSAGE = 'ai_message',
-    // 任务完成
-    TASK_COMPLETE = 'task_complete',
-    // 错误
-    ERROR = 'error',
-}
+import type { AgentRequest, PageContext, ProgressCallback, TaskList, SSEEventType } from '../ai/agent/types';
+import type { ToolResult } from '../ai/tools/types';
 
 /**
  * 发送 SSE 事件
  */
-function sendSSE(res: Response, event: SSEEventType, data: unknown) {
+function sendSSE(res: Response, event: SSEEventType, data: unknown): void {
     res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
@@ -44,27 +23,34 @@ function sendSSE(res: Response, event: SSEEventType, data: unknown) {
 /**
  * 流式对话接口
  * 
- * 使用 SSE 实现实时反馈
+ * 使用 SSE 实现实时反馈，每个步骤完成后立即推送更新
  */
-export async function streamChat(req: Request, res: Response) {
+export async function streamChat(req: Request, res: Response): Promise<void> {
     const userId = (req as any).user?.userId;
 
     if (!userId) {
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'UNAUTHORIZED',
             message: '未授权访问',
         });
+        return;
     }
 
-    const { messages, context, sessionId } = req.body as AgentRequest;
+    const { message, history, context, sessionId } = req.body as {
+        message: string;
+        history?: any[];
+        context?: PageContext;
+        sessionId?: string;
+    };
 
-    if (!messages || messages.length === 0) {
-        return res.status(400).json({
+    if (!message) {
+        res.status(400).json({
             success: false,
             error: 'INVALID_REQUEST',
             message: '消息不能为空',
         });
+        return;
     }
 
     // 设置 SSE 响应头
@@ -74,35 +60,124 @@ export async function streamChat(req: Request, res: Response) {
     res.setHeader('X-Accel-Buffering', 'no'); // 禁用 Nginx 缓冲
     res.flushHeaders();
 
+    // 创建进度回调
+    const callbacks: ProgressCallback = {
+        onTaskStart: (taskList: TaskList) => {
+            console.log('[SSE] 任务开始:', taskList.mapName);
+            sendSSE(res, 'task_start' as SSEEventType, {
+                taskList,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onStepStart: (taskList: TaskList, stepNumber: number) => {
+            const step = taskList.tasks.find(t => t.stepNumber === stepNumber);
+            console.log('[SSE] 步骤开始:', stepNumber, step?.name);
+            sendSSE(res, 'step_start' as SSEEventType, {
+                taskList,
+                stepNumber,
+                stepName: step?.name,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onStepComplete: (taskList: TaskList, stepNumber: number, result: unknown) => {
+            const step = taskList.tasks.find(t => t.stepNumber === stepNumber);
+            console.log('[SSE] 步骤完成:', stepNumber, step?.name);
+            sendSSE(res, 'step_complete' as SSEEventType, {
+                taskList,
+                stepNumber,
+                stepName: step?.name,
+                resultSummary: step?.resultSummary,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onStepFailed: (taskList: TaskList, stepNumber: number, error: string) => {
+            console.log('[SSE] 步骤失败:', stepNumber, error);
+            sendSSE(res, 'step_failed' as SSEEventType, {
+                taskList,
+                stepNumber,
+                error,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onToolCall: (toolId: string, params: Record<string, unknown>) => {
+            console.log('[SSE] 工具调用:', toolId);
+            sendSSE(res, 'tool_call' as SSEEventType, {
+                toolId,
+                params,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onToolResult: (toolId: string, result: ToolResult) => {
+            console.log('[SSE] 工具结果:', toolId, result.success ? '成功' : '失败');
+            sendSSE(res, 'tool_result' as SSEEventType, {
+                toolId,
+                success: result.success,
+                // 只发送摘要，不发送完整数据（避免数据量过大）
+                hasData: !!result.data,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onMessage: (content: string) => {
+            console.log('[SSE] AI 消息:', content.substring(0, 50) + '...');
+            sendSSE(res, 'ai_message' as SSEEventType, {
+                content,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onTaskComplete: (taskList: TaskList, finalContent: string) => {
+            console.log('[SSE] 任务完成:', taskList.mapName);
+            sendSSE(res, 'task_complete' as SSEEventType, {
+                taskList,
+                content: finalContent,
+                timestamp: new Date().toISOString(),
+            });
+        },
+
+        onError: (error: string) => {
+            console.error('[SSE] 错误:', error);
+            sendSSE(res, 'error' as SSEEventType, {
+                error,
+                timestamp: new Date().toISOString(),
+            });
+        },
+    };
+
     try {
-        // 发送开始事件
-        sendSSE(res, SSEEventType.TASK_START, {
+        // 构建 Agent 请求
+        const agentRequest: AgentRequest = {
+            message,
+            history,
+            context,
+            userId,
             sessionId,
-            timestamp: new Date().toISOString(),
-        });
+        };
 
-        // 调用 agent 处理
-        // TODO: 修改 processAgentRequest 支持回调，在每个步骤完成时调用
-        const result = await processAgentRequest({
-            messages,
-            context: context as PageContext,
-            sessionId,
-        }, userId);
+        // 调用 Agent 处理，传入回调
+        const result = await processAgentRequest(agentRequest, callbacks);
 
-        // 发送最终结果
-        sendSSE(res, SSEEventType.TASK_COMPLETE, {
+        // 发送最终完成事件
+        sendSSE(res, 'task_complete' as SSEEventType, {
             content: result.content,
             toolResults: result.toolResults,
             taskList: result.taskList,
             uiSpec: result.uiSpec,
             predictedActions: result.predictedActions,
             sessionId: result.sessionId,
+            timestamp: new Date().toISOString(),
         });
 
     } catch (error) {
-        console.error('[Agent Stream] 处理失败:', error);
-        sendSSE(res, SSEEventType.ERROR, {
-            message: error instanceof Error ? error.message : '处理失败',
+        console.error('[SSE] 处理失败:', error);
+        sendSSE(res, 'error' as SSEEventType, {
+            error: error instanceof Error ? error.message : '处理失败',
+            timestamp: new Date().toISOString(),
         });
     } finally {
         // 结束流
@@ -113,4 +188,3 @@ export async function streamChat(req: Request, res: Response) {
 export default {
     streamChat,
 };
-

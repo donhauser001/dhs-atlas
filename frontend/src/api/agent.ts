@@ -184,6 +184,56 @@ export interface ToolInfo {
     requiresConfirmation?: boolean;
 }
 
+// ============ SSE 事件类型 ============
+
+/**
+ * SSE 事件类型
+ */
+export type SSEEventType =
+    | 'task_start'
+    | 'step_start'
+    | 'step_complete'
+    | 'step_failed'
+    | 'tool_call'
+    | 'tool_result'
+    | 'ai_message'
+    | 'task_complete'
+    | 'error';
+
+/**
+ * SSE 事件数据
+ */
+export interface SSEEventData {
+    type: SSEEventType;
+    taskList?: TaskList;
+    stepNumber?: number;
+    stepName?: string;
+    toolId?: string;
+    content?: string;
+    error?: string;
+    timestamp: string;
+    // task_complete 事件特有字段
+    toolResults?: Array<{ toolId: string; result: ToolResult }>;
+    uiSpec?: UISpec;
+    predictedActions?: PredictedAction[];
+    sessionId?: string;
+}
+
+/**
+ * SSE 进度回调
+ */
+export interface SSEProgressCallbacks {
+    onTaskStart?: (taskList: TaskList) => void;
+    onStepStart?: (taskList: TaskList, stepNumber: number, stepName?: string) => void;
+    onStepComplete?: (taskList: TaskList, stepNumber: number, stepName?: string) => void;
+    onStepFailed?: (taskList: TaskList, stepNumber: number, error: string) => void;
+    onToolCall?: (toolId: string) => void;
+    onToolResult?: (toolId: string, success: boolean) => void;
+    onMessage?: (content: string) => void;
+    onComplete?: (response: AgentChatResponse) => void;
+    onError?: (error: string) => void;
+}
+
 // ============ API 函数 ============
 
 /**
@@ -202,6 +252,161 @@ export async function sendAgentMessage(
     }
 
     return response.data.data;
+}
+
+/**
+ * 流式发送消息给 Agent（SSE 实时反馈）
+ * 
+ * @param request - 请求参数
+ * @param callbacks - 进度回调
+ * @returns 取消函数
+ */
+export function streamAgentMessage(
+    request: AgentChatRequest,
+    callbacks: SSEProgressCallbacks
+): () => void {
+    const controller = new AbortController();
+
+    // 获取认证 token
+    const token = localStorage.getItem('token');
+    
+    // 使用 fetch 而不是 EventSource（因为需要 POST 请求）
+    const fetchStream = async () => {
+        try {
+            const response = await fetch('/api/agent/chat/stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : '',
+                },
+                body: JSON.stringify(request),
+                signal: controller.signal,
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) {
+                throw new Error('No response body');
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // 解析 SSE 事件
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || ''; // 保留不完整的行
+
+                let currentEvent: SSEEventType | null = null;
+
+                for (const line of lines) {
+                    if (line.startsWith('event: ')) {
+                        currentEvent = line.slice(7).trim() as SSEEventType;
+                    } else if (line.startsWith('data: ') && currentEvent) {
+                        try {
+                            const data = JSON.parse(line.slice(6)) as SSEEventData;
+                            handleSSEEvent(currentEvent, data, callbacks);
+                        } catch (e) {
+                            console.warn('[SSE] 解析事件数据失败:', e);
+                        }
+                        currentEvent = null;
+                    }
+                }
+            }
+        } catch (error) {
+            if ((error as Error).name === 'AbortError') {
+                console.log('[SSE] 请求已取消');
+                return;
+            }
+            console.error('[SSE] 流式请求失败:', error);
+            callbacks.onError?.(error instanceof Error ? error.message : '未知错误');
+        }
+    };
+
+    fetchStream();
+
+    // 返回取消函数
+    return () => {
+        controller.abort();
+    };
+}
+
+/**
+ * 处理 SSE 事件
+ */
+function handleSSEEvent(
+    eventType: SSEEventType,
+    data: SSEEventData,
+    callbacks: SSEProgressCallbacks
+): void {
+    console.log('[SSE] 收到事件:', eventType, data);
+
+    switch (eventType) {
+        case 'task_start':
+            if (data.taskList) {
+                callbacks.onTaskStart?.(data.taskList);
+            }
+            break;
+
+        case 'step_start':
+            if (data.taskList && data.stepNumber !== undefined) {
+                callbacks.onStepStart?.(data.taskList, data.stepNumber, data.stepName);
+            }
+            break;
+
+        case 'step_complete':
+            if (data.taskList && data.stepNumber !== undefined) {
+                callbacks.onStepComplete?.(data.taskList, data.stepNumber, data.stepName);
+            }
+            break;
+
+        case 'step_failed':
+            if (data.taskList && data.stepNumber !== undefined && data.error) {
+                callbacks.onStepFailed?.(data.taskList, data.stepNumber, data.error);
+            }
+            break;
+
+        case 'tool_call':
+            if (data.toolId) {
+                callbacks.onToolCall?.(data.toolId);
+            }
+            break;
+
+        case 'tool_result':
+            if (data.toolId) {
+                callbacks.onToolResult?.(data.toolId, true);
+            }
+            break;
+
+        case 'ai_message':
+            if (data.content) {
+                callbacks.onMessage?.(data.content);
+            }
+            break;
+
+        case 'task_complete':
+            callbacks.onComplete?.({
+                content: data.content || '',
+                taskList: data.taskList,
+                toolResults: data.toolResults,
+                uiSpec: data.uiSpec,
+                predictedActions: data.predictedActions,
+                sessionId: data.sessionId,
+            });
+            break;
+
+        case 'error':
+            callbacks.onError?.(data.error || '未知错误');
+            break;
+    }
 }
 
 /**
@@ -247,6 +452,7 @@ export async function getAgentTools(): Promise<ToolInfo[]> {
 
 const agentApi = {
     chat: sendAgentMessage,
+    chatStream: streamAgentMessage,
     confirm: confirmToolCalls,
     status: getAgentStatus,
     tools: getAgentTools,

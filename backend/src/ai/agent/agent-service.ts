@@ -29,6 +29,8 @@ import type {
     AgentResponse,
     AgentMessage,
     PageContext,
+    ProgressCallback,
+    TaskList,
 } from './types';
 
 // 重新导出缓存清理函数
@@ -36,9 +38,13 @@ export { clearMapsCache };
 
 /**
  * Agent Service 主函数 - V2 架构
+ * 
+ * @param request - Agent 请求
+ * @param callbacks - 可选的进度回调，用于 SSE 实时反馈
  */
 export async function processAgentRequest(
-    request: AgentRequest
+    request: AgentRequest,
+    callbacks?: ProgressCallback
 ): Promise<AgentResponse> {
     const { message, history = [], context, userId, sessionId } = request;
     const currentSessionId = sessionId || uuidv4();
@@ -128,13 +134,25 @@ export async function processAgentRequest(
         module: context?.module,
         pathname: context?.pathname,
     };
+    
+    // 执行工具并触发回调
     const toolResults = await executeToolCalls(executableToolCalls, toolContext);
+    
+    // 触发工具结果回调
+    for (const result of toolResults) {
+        callbacks?.onToolResult?.(result.toolId, result.result);
+    }
 
     // Step 6: 检测地图执行流程
     const { prompt: mapStepPrompt, taskList: currentTaskList } = await generateMapStepPrompt(
         toolResults,
         currentSessionId
     );
+    
+    // 如果识别到地图，触发任务开始回调
+    if (currentTaskList) {
+        callbacks?.onTaskStart?.(currentTaskList);
+    }
 
     // Step 7: 格式化输出
     let finalResponse = llmResponse;
@@ -194,8 +212,18 @@ ${toolResultsText}
 
                 console.log('[Agent] 第', round, '轮：发现', newToolCalls.length, '个工具调用');
 
+                // 触发工具调用回调
+                for (const call of newToolCalls) {
+                    callbacks?.onToolCall?.(call.toolId, call.params);
+                }
+
                 const newResults = await executeToolCalls(newToolCalls, toolContext);
                 toolResults.push(...newResults);
+                
+                // 触发工具结果回调
+                for (const result of newResults) {
+                    callbacks?.onToolResult?.(result.toolId, result.result);
+                }
 
                 const newToolResultsText = formatToolResults(newResults);
                 console.log('[Agent] 第', round, '轮结果（前 500 字符）:', newToolResultsText.substring(0, 500));
@@ -208,6 +236,16 @@ ${toolResultsText}
                 );
                 if (nextTaskList) {
                     latestTaskList = nextTaskList;
+                    // 触发步骤完成回调（taskList 更新意味着有步骤完成）
+                    const completedStep = nextTaskList.tasks.find(t => t.status === 'completed' && t.stepNumber === nextTaskList.currentStep - 1);
+                    if (completedStep) {
+                        callbacks?.onStepComplete?.(nextTaskList, completedStep.stepNumber, completedStep.resultSummary);
+                    }
+                    // 如果有下一步，触发步骤开始回调
+                    const currentStep = nextTaskList.tasks.find(t => t.status === 'in_progress');
+                    if (currentStep) {
+                        callbacks?.onStepStart?.(nextTaskList, currentStep.stepNumber);
+                    }
                 }
 
                 let nextFormatPrompt: string;
@@ -228,6 +266,12 @@ ${nextMapPrompt}
                 } else if (isCompleted) {
                     // 地图已完成所有步骤
                     console.log('[Agent] 🗺️ 第', round, '轮：地图执行完成，生成最终汇总');
+                    
+                    // 触发任务完成回调（先发送，让前端知道任务完成）
+                    if (latestTaskList) {
+                        callbacks?.onTaskComplete?.(latestTaskList, '');
+                    }
+                    
                     // 只使用最新一轮的结果（包含最终数据），避免上下文溢出
                     nextFormatPrompt = `用户问题：${userQuestion}
 
@@ -294,6 +338,14 @@ ${allResultsSummary.substring(0, 3000)}
 
     // 使用 latestTaskList（在循环中实时更新的），而不是从已清除的上下文获取
     console.log('[Agent] 最终 taskList:', latestTaskList ? `${latestTaskList.mapName} - ${latestTaskList.status}` : 'null');
+
+    // 触发 AI 消息回调
+    callbacks?.onMessage?.(textContent);
+
+    // 如果任务已完成，确保触发任务完成回调
+    if (latestTaskList?.status === 'completed') {
+        callbacks?.onTaskComplete?.(latestTaskList, textContent);
+    }
 
     return {
         content: textContent,

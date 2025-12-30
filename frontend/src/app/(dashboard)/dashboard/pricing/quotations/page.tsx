@@ -264,10 +264,6 @@ export default function QuotationsPage() {
     .reduce((sum, q) => sum + q.totalAmount, 0);
   const draftCount = quotations.filter((q) => q.status === 'draft').length;
 
-  if (loading) {
-    return <PageLoading />;
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader

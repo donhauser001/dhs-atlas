@@ -78,8 +78,9 @@ const defaultStep: AiMapStep = {
 export default function AiMapsPage() {
     const { data: maps, isLoading } = useAiMaps();
     const { data: tools } = useAiTools();
-    const { data: dataModels } = useAiDataModels();
     const { data: templates } = useAiTemplates();
+    // V2 架构：DataModel 已被 DataMapService 替代
+    const dataModels: Array<{ _id: string; name: string; collection: string }> = [];
     const createMutation = useCreateAiMap();
     const updateMutation = useUpdateAiMap();
     const deleteMutation = useDeleteAiMap();

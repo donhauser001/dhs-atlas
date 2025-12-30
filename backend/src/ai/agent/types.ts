@@ -143,6 +143,82 @@ export interface PredictedAction {
     requiresConfirmation: boolean;
 }
 
+// ============================================================================
+// SSE 实时反馈类型
+// ============================================================================
+
+/**
+ * SSE 事件类型
+ */
+export enum SSEEventType {
+    /** 任务开始 */
+    TASK_START = 'task_start',
+    /** 步骤开始 */
+    STEP_START = 'step_start',
+    /** 步骤完成 */
+    STEP_COMPLETE = 'step_complete',
+    /** 步骤失败 */
+    STEP_FAILED = 'step_failed',
+    /** 工具调用 */
+    TOOL_CALL = 'tool_call',
+    /** 工具结果 */
+    TOOL_RESULT = 'tool_result',
+    /** AI 消息（流式文本） */
+    AI_MESSAGE = 'ai_message',
+    /** 任务完成 */
+    TASK_COMPLETE = 'task_complete',
+    /** 错误 */
+    ERROR = 'error',
+}
+
+/**
+ * SSE 事件数据
+ */
+export interface SSEEventData {
+    type: SSEEventType;
+    /** 任务列表（步骤相关事件携带） */
+    taskList?: TaskList;
+    /** 步骤序号 */
+    stepNumber?: number;
+    /** 步骤名称 */
+    stepName?: string;
+    /** 工具 ID */
+    toolId?: string;
+    /** 工具结果 */
+    toolResult?: ToolResult;
+    /** AI 消息内容 */
+    content?: string;
+    /** 错误信息 */
+    error?: string;
+    /** 时间戳 */
+    timestamp: string;
+}
+
+/**
+ * 进度回调接口
+ * 用于 SSE 实时反馈
+ */
+export interface ProgressCallback {
+    /** 任务开始（地图被识别时） */
+    onTaskStart?: (taskList: TaskList) => void;
+    /** 步骤开始 */
+    onStepStart?: (taskList: TaskList, stepNumber: number) => void;
+    /** 步骤完成 */
+    onStepComplete?: (taskList: TaskList, stepNumber: number, result: unknown) => void;
+    /** 步骤失败 */
+    onStepFailed?: (taskList: TaskList, stepNumber: number, error: string) => void;
+    /** 工具调用 */
+    onToolCall?: (toolId: string, params: Record<string, unknown>) => void;
+    /** 工具结果 */
+    onToolResult?: (toolId: string, result: ToolResult) => void;
+    /** AI 消息（流式文本） */
+    onMessage?: (content: string) => void;
+    /** 任务完成 */
+    onTaskComplete?: (taskList: TaskList, finalContent: string) => void;
+    /** 错误 */
+    onError?: (error: string) => void;
+}
+
 /**
  * Agent 响应
  */

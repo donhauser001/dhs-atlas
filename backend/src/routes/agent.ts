@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import AgentController from '../controllers/AgentController';
+import AgentStreamController from '../controllers/AgentStreamController';
 import { authenticateJWT } from '../middleware/auth';
 
 const router = Router();
@@ -15,6 +16,9 @@ router.use(authenticateJWT);
 
 // POST /api/agent/chat - AI 对话
 router.post('/chat', AgentController.chat);
+
+// POST /api/agent/chat/stream - SSE 流式对话（实时反馈）
+router.post('/chat/stream', AgentStreamController.streamChat);
 
 // POST /api/agent/confirm - 确认并执行工具
 router.post('/confirm', AgentController.confirmTools);

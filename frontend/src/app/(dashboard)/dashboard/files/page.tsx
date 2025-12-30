@@ -246,11 +246,11 @@ export default function FileCenterPage() {
 
   // 统计
   const totalFiles = pagination?.total || files.length;
-  const totalSize = files.reduce((sum, f) => sum + f.fileSize, 0);
+  const totalSize = files.reduce((sum: number, f: FileItem) => sum + f.fileSize, 0);
 
   // 分类统计
   const categoryStats = files.reduce(
-    (acc, f) => {
+    (acc: Record<string, number>, f: FileItem) => {
       acc[f.category] = (acc[f.category] || 0) + 1;
       return acc;
     },
@@ -311,7 +311,7 @@ export default function FileCenterPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {files.filter((f) => f.mimeType.startsWith('image/')).length}
+              {files.filter((f: FileItem) => f.mimeType.startsWith('image/')).length}
             </div>
           </CardContent>
         </Card>

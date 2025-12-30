@@ -118,8 +118,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
         if (response.data.success) {
           setEnterprises(response.data.data);
         }
-      } catch {
-        console.error('获取企业列表失败:', error);
+      } catch (err) {
+        console.error('获取企业列表失败:', err);
       }
     };
     fetchEnterprises();
