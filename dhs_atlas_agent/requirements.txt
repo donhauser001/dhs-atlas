@@ -1,0 +1,20 @@
+# DHS-Atlas Agent 依赖
+
+# DB-GPT 核心
+dbgpt>=0.6.0
+
+# Web 框架
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pydantic>=2.0.0
+
+# MongoDB
+pymongo>=4.0.0
+
+# HTTP
+httpx>=0.24.0
+
+# 其他
+python-dotenv>=1.0.0
+typing-extensions>=4.0.0
+

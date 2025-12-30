@@ -22,7 +22,7 @@ export function createTaskListFromMap(
     steps: IAiMapStep[]
 ): TaskList {
     const now = new Date();
-    
+
     const tasks: TaskItem[] = steps.map((step, index) => ({
         stepNumber: index + 1,
         name: step.name || `步骤 ${index + 1}`,
@@ -53,8 +53,8 @@ export function startTaskList(taskList: TaskList): TaskList {
         currentStep: 1,
         status: 'running',
         updatedAt: new Date(),
-        tasks: taskList.tasks.map((task, index) => 
-            index === 0 
+        tasks: taskList.tasks.map((task, index) =>
+            index === 0
                 ? { ...task, status: 'in_progress' as TaskStatus, startTime: new Date() }
                 : task
         ),
@@ -159,7 +159,7 @@ export function generateTaskProgressPrompt(taskList: TaskList): string {
     for (const task of taskList.tasks) {
         const icon = statusIcon[task.status];
         let line = `${icon} 步骤 ${task.stepNumber}: ${task.name}`;
-        
+
         if (task.status === 'completed' && task.resultSummary) {
             line += `\n   → ${task.resultSummary}`;
         }
@@ -169,7 +169,7 @@ export function generateTaskProgressPrompt(taskList: TaskList): string {
         if (task.status === 'in_progress') {
             line += ' [执行中...]';
         }
-        
+
         lines.push(line);
     }
 

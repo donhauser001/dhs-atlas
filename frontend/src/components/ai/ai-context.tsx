@@ -349,7 +349,7 @@ export function AiProvider({
 
       onComplete: (response) => {
         console.log('[AI SSE] 任务完成');
-        
+
         // 保存返回的 sessionId
         if (response.sessionId) {
           sessionIdRef.current = response.sessionId;

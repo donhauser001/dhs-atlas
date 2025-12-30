@@ -72,7 +72,7 @@ function TaskItemRow({ task, isLast }: TaskItemRowProps) {
       {!isLast && (
         <div className="absolute left-[7px] top-5 w-0.5 h-full bg-border" />
       )}
-      
+
       {/* 状态图标 */}
       <div className="absolute left-0 top-0.5">
         <StatusIcon status={task.status} />
@@ -170,8 +170,8 @@ export function TaskPanel({ taskList, className, defaultExpanded = true }: TaskP
   const progressPercentage = Math.round((completedCount / taskList.totalSteps) * 100);
 
   // 状态图标
-  const StatusHeaderIcon = taskList.status === 'completed' 
-    ? CheckCircle2 
+  const StatusHeaderIcon = taskList.status === 'completed'
+    ? CheckCircle2
     : taskList.status === 'failed'
       ? XCircle
       : taskList.status === 'running'

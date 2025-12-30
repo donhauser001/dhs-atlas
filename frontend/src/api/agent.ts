@@ -269,7 +269,7 @@ export function streamAgentMessage(
 
     // 获取认证 token
     const token = localStorage.getItem('token');
-    
+
     // 使用 fetch 而不是 EventSource（因为需要 POST 请求）
     const fetchStream = async () => {
         try {
@@ -299,7 +299,7 @@ export function streamAgentMessage(
 
             while (true) {
                 const { done, value } = await reader.read();
-                
+
                 if (done) {
                     console.log('[SSE] 流式数据接收完成');
                     break;
@@ -307,7 +307,7 @@ export function streamAgentMessage(
 
                 const chunk = decoder.decode(value, { stream: true });
                 console.log('[SSE] 收到数据块:', chunk.length, '字节');
-                
+
                 buffer += chunk;
 
                 // 解析 SSE 事件 - 以双换行分割事件
@@ -316,7 +316,7 @@ export function streamAgentMessage(
 
                 for (const eventBlock of events) {
                     if (!eventBlock.trim()) continue;
-                    
+
                     const lines = eventBlock.split('\n');
                     let currentEvent: SSEEventType | null = null;
                     let currentData: string | null = null;
