@@ -158,6 +158,17 @@ class DHSAtlasAgent:
         print(f"  - Tools: {len(self._tools)}")
         print(f"  - 提示词来源: {'数据库' if base_prompt else '默认'}")
     
+    def _filter_think_tags(self, content: str) -> str:
+        """过滤 LLM 思考过程标签
+        
+        qwen3 等模型会输出 <think>...</think> 标签，需要过滤掉
+        """
+        # 移除 <think>...</think> 标签及其内容
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+        # 清理多余的空行
+        content = re.sub(r'\n{3,}', '\n\n', content)
+        return content.strip()
+    
     def _parse_tool_calls(self, response: str) -> List[Dict]:
         """解析工具调用"""
         pattern = r'```tool_call\s*\n?(.*?)\n?```'
@@ -208,7 +219,12 @@ class DHSAtlasAgent:
                 raise Exception(f"LLM API 错误: {response.status_code} - {response.text}")
             
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            
+            # 过滤 LLM 思考过程标签 (qwen3 等模型会输出 <think>...</think>)
+            content = self._filter_think_tags(content)
+            
+            return content
     
     async def chat(
         self,
