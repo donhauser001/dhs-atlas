@@ -5,6 +5,7 @@
  * - Tool System: 工具注册和执行
  * - Workflow System: 工作流管理
  * - Agent Service: AI 代理服务
+ * - DB-GPT Bridge: DB-GPT 桥接层（可选）
  */
 
 // 工具系统
@@ -16,4 +17,7 @@ export * from './workflows';
 
 // Agent 服务
 export * from './agent';
+
+// DB-GPT 桥接层（通过 USE_DBGPT=true 启用）
+export * from './dbgpt';
 

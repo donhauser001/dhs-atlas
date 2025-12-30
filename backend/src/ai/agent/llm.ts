@@ -2,15 +2,42 @@
  * LLM 调用模块
  * 
  * 负责与大语言模型的通信
+ * 
+ * 支持两种后端：
+ * 1. 原有模式：使用 AiModel 配置的模型（默认）
+ * 2. DB-GPT 模式：通过 USE_DBGPT=true 启用
  */
 
 import AiModel from '../../models/AiModel';
+import { getAIServiceConfig } from '../dbgpt/config';
+import { callDBGPT } from '../dbgpt/llm-bridge';
 import type { AgentMessage } from './types';
 
 /**
  * 调用 LLM
+ * 
+ * 根据配置自动选择使用原有模型还是 DB-GPT
  */
 export async function callLLM(
+    systemPrompt: string,
+    messages: AgentMessage[]
+): Promise<string> {
+    const config = getAIServiceConfig();
+
+    // 如果启用了 DB-GPT，使用 DB-GPT 后端
+    if (config.useDBGPT) {
+        console.log('[Agent] 使用 DB-GPT 后端:', config.dbgptModel);
+        return callDBGPT(systemPrompt, messages);
+    }
+
+    // 原有逻辑：使用数据库配置的模型
+    return callLLMOriginal(systemPrompt, messages);
+}
+
+/**
+ * 原有的 LLM 调用实现
+ */
+async function callLLMOriginal(
     systemPrompt: string,
     messages: AgentMessage[]
 ): Promise<string> {
