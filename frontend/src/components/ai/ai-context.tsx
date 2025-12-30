@@ -165,6 +165,9 @@ export function AiProvider({
   // SSE 取消函数引用
   const cancelStreamRef = React.useRef<(() => void) | null>(null);
 
+  // 流式内容缓存（用于在 onComplete 时更新历史记录）
+  const streamContentRef = React.useRef<string>('');
+
   // 组件挂载时重置状态（确保刷新后清空）
   React.useEffect(() => {
     console.log('[AI] Provider 挂载，重置状态');
@@ -340,6 +343,8 @@ export function AiProvider({
 
       onMessage: (content) => {
         console.log('[AI SSE] AI 消息:', content.substring(0, 50) + '...');
+        // 保存流式内容（用于历史记录）
+        streamContentRef.current = content;
         // 更新消息内容（实时显示）
         updateLastMessage({
           content,
@@ -355,26 +360,42 @@ export function AiProvider({
           sessionIdRef.current = response.sessionId;
         }
 
-        // 更新最终 AI 回复
-        updateLastMessage({
-          content: response.content,
+        // 更新最终 AI 回复（只更新有值的字段，避免覆盖 onMessage 设置的内容）
+        const updateFields: Partial<Omit<AiMessage, 'id' | 'timestamp'>> = {
           status: 'complete',
-          pendingToolCalls: response.pendingToolCalls,
-          predictedActions: response.predictedActions,
-          uiSpec: response.uiSpec,
-          taskList: response.taskList,
-        });
+        };
+        if (response.content) {
+          updateFields.content = response.content;
+        }
+        if (response.pendingToolCalls) {
+          updateFields.pendingToolCalls = response.pendingToolCalls;
+        }
+        if (response.predictedActions) {
+          updateFields.predictedActions = response.predictedActions;
+        }
+        if (response.uiSpec) {
+          updateFields.uiSpec = response.uiSpec;
+        }
+        if (response.taskList) {
+          updateFields.taskList = response.taskList;
+        }
+        updateLastMessage(updateFields);
 
         // 更新任务列表
         if (response.taskList) {
           setCurrentTaskList(response.taskList);
         }
 
-        // 更新对话历史
-        historyRef.current.push({
-          role: 'assistant',
-          content: response.content,
-        });
+        // 更新对话历史（优先使用流式内容，或 response.content）
+        const finalContent = response.content || streamContentRef.current;
+        if (finalContent) {
+          historyRef.current.push({
+            role: 'assistant',
+            content: finalContent,
+          });
+        }
+        // 重置流式内容缓存
+        streamContentRef.current = '';
 
         // 处理 UI 渲染请求
         if (response.uiSpec) {

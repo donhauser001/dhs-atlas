@@ -198,7 +198,11 @@ export type SSEEventType =
     | 'tool_result'
     | 'ai_message'
     | 'task_complete'
-    | 'error';
+    | 'error'
+    // Python Agent 发送的事件类型
+    | 'start'
+    | 'content'
+    | 'done';
 
 /**
  * SSE 事件数据
@@ -211,12 +215,14 @@ export interface SSEEventData {
     toolId?: string;
     content?: string;
     error?: string;
-    timestamp: string;
+    timestamp?: string;
     // task_complete 事件特有字段
     toolResults?: Array<{ toolId: string; result: ToolResult }>;
     uiSpec?: UISpec;
     predictedActions?: PredictedAction[];
     sessionId?: string;
+    // Python Agent 发送的事件特有字段
+    session_id?: string;
 }
 
 /**
@@ -271,9 +277,13 @@ export function streamAgentMessage(
     const token = localStorage.getItem('token');
 
     // 使用 fetch 而不是 EventSource（因为需要 POST 请求）
+    // 深度整合：直接调用 Python Agent API
+    // 如果 Python Agent 未运行，会回退到原来的 TypeScript 后端
+    const streamUrl = 'http://localhost:8000/api/agent/stream';
+
     const fetchStream = async () => {
         try {
-            const response = await fetch('/api/agent/chat/stream', {
+            const response = await fetch(streamUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -406,24 +416,31 @@ function handleSSEEvent(
             break;
 
         case 'ai_message':
+        case 'content':  // Python Agent 发送的事件类型
             if (data.content) {
                 callbacks.onMessage?.(data.content);
             }
             break;
 
         case 'task_complete':
+        case 'done':  // Python Agent 发送的事件类型
             callbacks.onComplete?.({
                 content: data.content || '',
                 taskList: data.taskList,
                 toolResults: data.toolResults,
                 uiSpec: data.uiSpec,
                 predictedActions: data.predictedActions,
-                sessionId: data.sessionId,
+                sessionId: data.sessionId || data.session_id,
             });
             break;
 
         case 'error':
             callbacks.onError?.(data.error || '未知错误');
+            break;
+
+        case 'start':  // Python Agent 发送的事件类型
+            // 开始事件，可以用于显示加载状态
+            console.log('[SSE] 会话开始:', data.session_id);
             break;
     }
 }
