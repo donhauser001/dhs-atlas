@@ -13,23 +13,33 @@ from .base import get_collection, serialize_doc, to_object_id
 class ServicePricing:
     """服务定价数据模型"""
     id: Optional[str] = None
-    name: str = ""
-    description: str = ""
+    service_name: str = ""  # serviceName
+    alias: str = ""  # 别名
+    category_id: str = ""  # categoryId
+    category_name: str = ""  # categoryName
+    unit_price: float = 0.0  # unitPrice
     unit: str = ""  # 单位：千字、本、次等
-    base_price: float = 0.0
-    category: str = ""
-    is_active: bool = True
+    price_description: str = ""  # priceDescription
+    status: str = "active"  # status
+    pricing_policy_names: List[str] = field(default_factory=list)  # pricingPolicyNames
+    additional_config_name: str = ""  # additionalConfigName
+    service_process_name: str = ""  # serviceProcessName
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return {
             "id": self.id,
-            "name": self.name,
-            "description": self.description,
+            "serviceName": self.service_name,
+            "alias": self.alias,
+            "categoryId": self.category_id,
+            "categoryName": self.category_name,
+            "unitPrice": self.unit_price,
             "unit": self.unit,
-            "basePrice": self.base_price,
-            "category": self.category,
-            "isActive": self.is_active,
+            "priceDescription": self.price_description,
+            "status": self.status,
+            "pricingPolicyNames": self.pricing_policy_names,
+            "additionalConfigName": self.additional_config_name,
+            "serviceProcessName": self.service_process_name,
         }
     
     @classmethod
@@ -40,12 +50,17 @@ class ServicePricing:
         
         return cls(
             id=str(doc.get("_id", "")),
-            name=doc.get("name", ""),
-            description=doc.get("description", ""),
+            service_name=doc.get("serviceName", ""),
+            alias=doc.get("alias", ""),
+            category_id=doc.get("categoryId", ""),
+            category_name=doc.get("categoryName", ""),
+            unit_price=doc.get("unitPrice", 0.0),
             unit=doc.get("unit", ""),
-            base_price=doc.get("basePrice", 0.0),
-            category=doc.get("category", ""),
-            is_active=doc.get("isActive", True),
+            price_description=doc.get("priceDescription", ""),
+            status=doc.get("status", "active"),
+            pricing_policy_names=doc.get("pricingPolicyNames", []),
+            additional_config_name=doc.get("additionalConfigName", ""),
+            service_process_name=doc.get("serviceProcessName", ""),
         )
 
 
@@ -89,22 +104,22 @@ class ServicePricingModel:
         return [ServicePricing.from_doc(doc) for doc in cursor]
     
     @classmethod
-    def list_by_category(cls, category: str) -> List[ServicePricing]:
+    def list_by_category(cls, category_name: str) -> List[ServicePricing]:
         """按分类获取服务定价"""
-        cursor = cls.collection().find({"category": category, "isActive": True})
+        cursor = cls.collection().find({"categoryName": category_name, "status": "active"})
         return [ServicePricing.from_doc(doc) for doc in cursor]
     
     @classmethod
     def list_all(cls, active_only: bool = True) -> List[ServicePricing]:
         """获取所有服务定价"""
-        query = {"isActive": True} if active_only else {}
+        query = {"status": "active"} if active_only else {}
         cursor = cls.collection().find(query)
         return [ServicePricing.from_doc(doc) for doc in cursor]
     
     @classmethod
     def get_categories(cls) -> List[str]:
         """获取所有服务分类"""
-        return cls.collection().distinct("category")
+        return cls.collection().distinct("categoryName")
     
     @classmethod
     def count(cls, query: Optional[Dict] = None) -> int:
