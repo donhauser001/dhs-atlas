@@ -1,67 +1,69 @@
 """
 DHS-Atlas 主 Agent
 
-使用 DB-GPT ToolAssistantAgent 实现，替代原有的 agent-service.ts
+直接使用 httpx 调用 OpenAI 兼容 API
 """
 
 import asyncio
+import json
+import re
+import httpx
 from typing import Optional, Dict, Any, List, AsyncIterator
-from dataclasses import dataclass, field
-
-from dbgpt.agent import AgentContext, LLMConfig
-from dbgpt.agent.expand.tool_assistant_agent import ToolAssistantAgent
-from dbgpt.agent.core.memory import AgentMemory
-from dbgpt.agent.core.memory.gpts import GptsMemory
-from dbgpt.model.proxy import OpenAILLMClient
+from dataclasses import dataclass
 
 from dhs_atlas_agent.config import LLM_BASE_URL, LLM_MODEL, LLM_API_KEY
 from dhs_atlas_agent.tools import ALL_TOOLS
 
 
+# 构建工具描述
+def _build_tools_description() -> str:
+    """构建工具描述文本"""
+    lines = []
+    for tool_func in ALL_TOOLS:
+        name = tool_func.__name__
+        desc = getattr(tool_func, '_tool_description', '') or tool_func.__doc__ or ''
+        # 只取第一行作为简短描述
+        short_desc = desc.split('\n')[0].strip()
+        lines.append(f"- **{name}**: {short_desc}")
+    return '\n'.join(lines)
+
+
 # Agent 系统提示词
-AGENT_PROFILE = """你是 DHS-Atlas 企业管理系统的 AI 助手「鲁班」。
+SYSTEM_PROMPT = f"""你是 DHS-Atlas 企业管理系统的 AI 助手「鲁班」。
 
-## 你的能力
+## 可用工具
 
-你可以帮助用户：
-- 查询和管理客户信息
-- 查询报价单和定价方案
-- 查询项目和合同信息
-- 回答关于系统数据的问题
+{_build_tools_description()}
+
+## 工具调用格式
+
+当需要调用工具时，使用以下 JSON 格式：
+```tool_call
+{{"tool": "工具名称", "params": {{"参数名": "参数值"}}}}
+```
 
 ## 工具使用原则
 
-1. **优先使用专门工具**：
-   - 查询客户用 `get_client_detail` 或 `search_clients`
-   - 查询客户报价单用 `query_client_quotation`（这是组合工具，会自动完成多步查询）
-   - 不确定时用 `get_collection_schema` 了解数据结构
+1. 查询客户用 `get_client_detail` 或 `search_clients`
+2. 查询客户报价单用 `query_client_quotation`（组合工具，自动完成多步查询）
+3. 不确定数据结构时用 `get_collection_schema`
 
-2. **避免重复查询**：
-   - 如果已经有了客户信息，不要重复查询
-   - `query_client_quotation` 会返回完整信息，不需要再单独查询
+## 回答原则
 
-3. **数据展示**：
-   - 使用 Markdown 表格展示结构化数据
-   - 简洁明了，突出关键信息
-   - 中文回答
-
-## 重要提醒
-
-- 当用户问"XX的报价单"时，直接使用 `query_client_quotation` 工具
-- 不要假设数据，所有信息都从工具获取
-- 如果查询失败，告知用户原因"""
+- 使用中文回答
+- 使用 Markdown 表格展示结构化数据
+- 简洁明了，突出关键信息
+- 不要假设数据，所有信息都从工具获取"""
 
 
 @dataclass
 class ChatMessage:
     """聊天消息"""
-    role: str  # user | assistant | system
+    role: str
     content: str
-    tool_calls: Optional[List[Dict]] = None
-    timestamp: Optional[str] = None
 
 
-@dataclass
+@dataclass 
 class ChatResponse:
     """聊天响应"""
     content: str
@@ -71,11 +73,7 @@ class ChatResponse:
 
 
 class DHSAtlasAgent:
-    """
-    DHS-Atlas AI Agent
-    
-    完全基于 DB-GPT 框架实现，替代原有的 TypeScript agent-service
-    """
+    """DHS-Atlas AI Agent - 简化版实现"""
     
     def __init__(
         self,
@@ -83,24 +81,12 @@ class DHSAtlasAgent:
         model_name: str = None,
         api_key: str = None,
     ):
-        """
-        初始化 Agent
-        
-        Args:
-            llm_base_url: LLM API 地址，默认使用配置
-            model_name: 模型名称，默认使用配置
-            api_key: API Key，默认使用配置
-        """
-        self.llm_base_url = llm_base_url or LLM_BASE_URL
+        self.llm_base_url = (llm_base_url or LLM_BASE_URL).rstrip('/')
         self.model_name = model_name or LLM_MODEL
         self.api_key = api_key or LLM_API_KEY
         
-        # 初始化 LLM 客户端
-        self.llm_client = OpenAILLMClient(
-            api_base=self.llm_base_url,
-            api_key=self.api_key,
-            model_alias=self.model_name,
-        )
+        # 工具映射
+        self._tools = {func.__name__: func for func in ALL_TOOLS}
         
         # 会话存储
         self._sessions: Dict[str, List[ChatMessage]] = {}
@@ -108,29 +94,59 @@ class DHSAtlasAgent:
         print(f"[DHSAtlasAgent] 已初始化")
         print(f"  - LLM: {self.llm_base_url}")
         print(f"  - Model: {self.model_name}")
-        print(f"  - Tools: {len(ALL_TOOLS)}")
+        print(f"  - Tools: {len(self._tools)}")
     
-    def _get_agent_context(self, session_id: str) -> AgentContext:
-        """创建 Agent 上下文"""
-        return AgentContext(
-            conv_id=session_id,
-            llm_config=LLMConfig(
-                llm_client=self.llm_client,
-            ),
-        )
+    def _parse_tool_calls(self, response: str) -> List[Dict]:
+        """解析工具调用"""
+        pattern = r'```tool_call\s*\n?(.*?)\n?```'
+        matches = re.findall(pattern, response, re.DOTALL)
+        
+        calls = []
+        for match in matches:
+            try:
+                call = json.loads(match.strip())
+                if 'tool' in call:
+                    calls.append(call)
+            except json.JSONDecodeError:
+                continue
+        
+        return calls
     
-    async def _create_agent(self, session_id: str) -> ToolAssistantAgent:
-        """创建工具助手 Agent"""
-        context = self._get_agent_context(session_id)
+    def _execute_tool(self, tool_name: str, params: Dict) -> Dict:
+        """执行工具"""
+        if tool_name not in self._tools:
+            return {"error": f"工具不存在: {tool_name}"}
         
-        agent = await ToolAssistantAgent.build(
-            name="LuBan",
-            profile=AGENT_PROFILE,
-            tools=ALL_TOOLS,
-            context=context,
-        )
+        try:
+            result = self._tools[tool_name](**params)
+            return {"success": True, "data": result}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def _call_llm(self, messages: List[Dict]) -> str:
+        """调用 LLM (OpenAI 兼容 API)"""
+        url = f"{self.llm_base_url}/v1/chat/completions"
         
-        return agent
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                url,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                },
+                json={
+                    "model": self.model_name,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 4096,
+                },
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"LLM API 错误: {response.status_code} - {response.text}")
+            
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
     
     async def chat(
         self,
@@ -139,67 +155,68 @@ class DHSAtlasAgent:
         user_id: str = None,
         context: Dict[str, Any] = None,
     ) -> ChatResponse:
-        """
-        处理用户消息
-        
-        Args:
-            message: 用户消息
-            session_id: 会话 ID
-            user_id: 用户 ID
-            context: 上下文信息（module、pathname 等）
-            
-        Returns:
-            ChatResponse: 响应结果
-        """
+        """处理用户消息"""
         print(f"[DHSAtlasAgent] 收到消息: {message[:50]}...")
         
-        # 获取或创建会话历史
-        if session_id not in self._sessions:
-            self._sessions[session_id] = []
+        # 构建消息 (OpenAI 格式)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": message},
+        ]
         
-        history = self._sessions[session_id]
+        tool_results = []
+        max_rounds = 5
         
-        # 记录用户消息
-        history.append(ChatMessage(role="user", content=message))
+        for round_num in range(max_rounds):
+            # 调用 LLM
+            response = await self._call_llm(messages)
+            print(f"[DHSAtlasAgent] 第 {round_num + 1} 轮响应: {response[:200]}...")
+            
+            # 解析工具调用
+            tool_calls = self._parse_tool_calls(response)
+            
+            if not tool_calls:
+                # 没有工具调用，返回结果
+                return ChatResponse(
+                    content=response,
+                    session_id=session_id,
+                    tool_results=tool_results if tool_results else None,
+                )
+            
+            # 执行工具
+            tool_results_text = []
+            for call in tool_calls:
+                tool_name = call.get('tool')
+                params = call.get('params', {})
+                
+                print(f"[DHSAtlasAgent] 执行工具: {tool_name}({params})")
+                result = self._execute_tool(tool_name, params)
+                tool_results.append({"tool": tool_name, "result": result})
+                
+                # 格式化结果
+                if result.get("error"):
+                    tool_results_text.append(f"工具 {tool_name} 错误: {result['error']}")
+                else:
+                    data = result.get("data")
+                    # 截断过长的数据
+                    data_str = json.dumps(data, ensure_ascii=False, default=str)
+                    if len(data_str) > 2000:
+                        data_str = data_str[:2000] + "...(已截断)"
+                    tool_results_text.append(f"工具 {tool_name} 结果:\n{data_str}")
+            
+            # 添加工具结果到消息
+            messages.append({"role": "assistant", "content": response})
+            messages.append({
+                "role": "user",
+                "content": f"工具执行结果:\n\n" + "\n\n".join(tool_results_text) + "\n\n请根据结果用中文回答用户问题，使用 Markdown 表格展示数据。"
+            })
         
-        try:
-            # 创建 Agent
-            agent = await self._create_agent(session_id)
-            
-            # 调用 Agent
-            # 注意：DB-GPT 的 Agent 会自动处理工具调用
-            response = await agent.generate_reply(
-                message=message,
-                sender=None,  # 无发送者（用户直接输入）
-            )
-            
-            # 提取响应内容
-            content = response if isinstance(response, str) else str(response)
-            
-            # 记录 AI 响应
-            history.append(ChatMessage(role="assistant", content=content))
-            
-            # 限制历史长度
-            if len(history) > 20:
-                self._sessions[session_id] = history[-20:]
-            
-            return ChatResponse(
-                content=content,
-                session_id=session_id,
-            )
-            
-        except Exception as e:
-            print(f"[DHSAtlasAgent] 错误: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            error_msg = f"处理请求时发生错误: {str(e)}"
-            history.append(ChatMessage(role="assistant", content=error_msg))
-            
-            return ChatResponse(
-                content=error_msg,
-                session_id=session_id,
-            )
+        # 达到最大轮数
+        return ChatResponse(
+            content="处理超时，请简化问题后重试。",
+            session_id=session_id,
+            tool_results=tool_results,
+        )
     
     async def chat_stream(
         self,
@@ -208,74 +225,32 @@ class DHSAtlasAgent:
         user_id: str = None,
         context: Dict[str, Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        流式处理用户消息
-        
-        Args:
-            message: 用户消息
-            session_id: 会话 ID
-            user_id: 用户 ID
-            context: 上下文信息
-            
-        Yields:
-            事件字典，包含 type 和 data
-        """
-        print(f"[DHSAtlasAgent] 流式请求: {message[:50]}...")
-        
-        # 发送开始事件
+        """流式处理"""
         yield {"type": "start", "data": {"session_id": session_id}}
         
         try:
-            # 创建 Agent
-            agent = await self._create_agent(session_id)
-            
-            # TODO: 实现真正的流式响应
-            # 目前 DB-GPT 的 ToolAssistantAgent 不直接支持流式
-            # 需要自定义实现或等待框架支持
-            
-            # 暂时使用普通响应
-            response = await agent.generate_reply(
-                message=message,
-                sender=None,
-            )
-            
-            content = response if isinstance(response, str) else str(response)
-            
-            # 发送内容事件
-            yield {"type": "content", "data": {"content": content}}
-            
-            # 发送完成事件
+            response = await self.chat(message, session_id, user_id, context)
+            yield {"type": "content", "data": {"content": response.content}}
             yield {"type": "done", "data": {"session_id": session_id}}
-            
         except Exception as e:
-            print(f"[DHSAtlasAgent] 流式错误: {e}")
             yield {"type": "error", "data": {"error": str(e)}}
     
     def clear_session(self, session_id: str):
-        """清除会话历史"""
+        """清除会话"""
         if session_id in self._sessions:
             del self._sessions[session_id]
-            print(f"[DHSAtlasAgent] 已清除会话: {session_id}")
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
-        try:
-            # 尝试简单的 LLM 调用
-            # （这里可以添加更详细的检查）
-            return {
-                "status": "ok",
-                "llm_url": self.llm_base_url,
-                "model": self.model_name,
-                "tools_count": len(ALL_TOOLS),
-            }
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-            }
+        return {
+            "status": "ok",
+            "llm_url": self.llm_base_url,
+            "model": self.model_name,
+            "tools_count": len(self._tools),
+        }
 
 
-# 全局 Agent 实例
+# 全局实例
 _agent_instance: Optional[DHSAtlasAgent] = None
 
 
