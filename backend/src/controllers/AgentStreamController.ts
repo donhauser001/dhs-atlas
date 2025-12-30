@@ -13,11 +13,32 @@ import type { AgentRequest, PageContext, ProgressCallback, TaskList, SSEEventTyp
 import type { ToolResult } from '../ai/tools/types';
 
 /**
- * 发送 SSE 事件
+ * 发送 SSE 事件并立即刷新
+ * 
+ * 重要：必须在每次 write 后调用 flush，确保数据立即发送
+ * 否则数据可能被缓冲，导致"假聊天"问题
  */
 function sendSSE(res: Response, event: SSEEventType, data: unknown): void {
-    res.write(`event: ${event}\n`);
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    res.write(message);
+    
+    // 尝试多种方式强制刷新缓冲区
+    // 方式 1: compression 中间件的 flush
+    if (typeof (res as any).flush === 'function') {
+        (res as any).flush();
+    }
+    
+    // 方式 2: 使用 socket 的 uncork (强制发送缓冲数据)
+    if (res.socket) {
+        res.socket.uncork();
+        res.socket.cork(); // 重新启用缓冲，但之前的数据已发送
+        // 使用 setImmediate 在下一个事件循环再次 uncork
+        setImmediate(() => {
+            if (res.socket) {
+                res.socket.uncork();
+            }
+        });
+    }
 }
 
 /**
@@ -55,10 +76,16 @@ export async function streamChat(req: Request, res: Response): Promise<void> {
 
     // 设置 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // 禁用 Nginx 缓冲
+    res.setHeader('Content-Encoding', 'identity'); // 禁用压缩，确保实时传输
     res.flushHeaders();
+    
+    // 禁用 Nagle 算法，确保小数据包立即发送
+    if (res.socket) {
+        res.socket.setNoDelay(true);
+    }
 
     // 创建进度回调
     const callbacks: ProgressCallback = {

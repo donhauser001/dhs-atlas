@@ -295,29 +295,48 @@ export function streamAgentMessage(
             const decoder = new TextDecoder();
             let buffer = '';
 
+            console.log('[SSE] 开始接收流式数据...');
+
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                
+                if (done) {
+                    console.log('[SSE] 流式数据接收完成');
+                    break;
+                }
 
-                buffer += decoder.decode(value, { stream: true });
+                const chunk = decoder.decode(value, { stream: true });
+                console.log('[SSE] 收到数据块:', chunk.length, '字节');
+                
+                buffer += chunk;
 
-                // 解析 SSE 事件
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || ''; // 保留不完整的行
+                // 解析 SSE 事件 - 以双换行分割事件
+                const events = buffer.split('\n\n');
+                buffer = events.pop() || ''; // 保留不完整的事件
 
-                let currentEvent: SSEEventType | null = null;
+                for (const eventBlock of events) {
+                    if (!eventBlock.trim()) continue;
+                    
+                    const lines = eventBlock.split('\n');
+                    let currentEvent: SSEEventType | null = null;
+                    let currentData: string | null = null;
 
-                for (const line of lines) {
-                    if (line.startsWith('event: ')) {
-                        currentEvent = line.slice(7).trim() as SSEEventType;
-                    } else if (line.startsWith('data: ') && currentEvent) {
+                    for (const line of lines) {
+                        if (line.startsWith('event: ')) {
+                            currentEvent = line.slice(7).trim() as SSEEventType;
+                        } else if (line.startsWith('data: ')) {
+                            currentData = line.slice(6);
+                        }
+                    }
+
+                    if (currentEvent && currentData) {
+                        console.log('[SSE] 解析事件:', currentEvent);
                         try {
-                            const data = JSON.parse(line.slice(6)) as SSEEventData;
+                            const data = JSON.parse(currentData) as SSEEventData;
                             handleSSEEvent(currentEvent, data, callbacks);
                         } catch (e) {
-                            console.warn('[SSE] 解析事件数据失败:', e);
+                            console.warn('[SSE] 解析事件数据失败:', e, currentData);
                         }
-                        currentEvent = null;
                     }
                 }
             }

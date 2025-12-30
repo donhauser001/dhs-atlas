@@ -134,10 +134,10 @@ export async function processAgentRequest(
         module: context?.module,
         pathname: context?.pathname,
     };
-    
+
     // 执行工具并触发回调
     const toolResults = await executeToolCalls(executableToolCalls, toolContext);
-    
+
     // 触发工具结果回调
     for (const result of toolResults) {
         callbacks?.onToolResult?.(result.toolId, result.result);
@@ -148,7 +148,7 @@ export async function processAgentRequest(
         toolResults,
         currentSessionId
     );
-    
+
     // 如果识别到地图，触发任务开始回调
     if (currentTaskList) {
         callbacks?.onTaskStart?.(currentTaskList);
@@ -219,7 +219,7 @@ ${toolResultsText}
 
                 const newResults = await executeToolCalls(newToolCalls, toolContext);
                 toolResults.push(...newResults);
-                
+
                 // 触发工具结果回调
                 for (const result of newResults) {
                     callbacks?.onToolResult?.(result.toolId, result.result);
@@ -266,12 +266,12 @@ ${nextMapPrompt}
                 } else if (isCompleted) {
                     // 地图已完成所有步骤
                     console.log('[Agent] 🗺️ 第', round, '轮：地图执行完成，生成最终汇总');
-                    
+
                     // 触发任务完成回调（先发送，让前端知道任务完成）
                     if (latestTaskList) {
                         callbacks?.onTaskComplete?.(latestTaskList, '');
                     }
-                    
+
                     // 只使用最新一轮的结果（包含最终数据），避免上下文溢出
                     nextFormatPrompt = `用户问题：${userQuestion}
 
