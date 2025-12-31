@@ -106,3 +106,4 @@ def count_documents(
     mongo_query = _convert_object_ids(query or {})
     return coll.count_documents(mongo_query)
 
+

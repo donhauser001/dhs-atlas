@@ -40,3 +40,4 @@ def get_llm_config() -> dict:
         "api_key": LLM_API_KEY,
     }
 
+

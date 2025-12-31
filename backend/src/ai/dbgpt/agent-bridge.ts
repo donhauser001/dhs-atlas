@@ -76,7 +76,7 @@ export class DBGPTAgentService {
             // 解析工具调用
             if (response.toolCalls && response.toolCalls.length > 0) {
                 callbacks?.onMessage?.('正在执行工具...');
-                
+
                 const toolResults = await this.executeTools(
                     response.toolCalls,
                     { userId, sessionId: sessionId || '', module: context?.module },
@@ -84,7 +84,7 @@ export class DBGPTAgentService {
                 );
 
                 // 将工具结果加入对话，继续对话
-                const toolResultMessage = toolResults.map(r => 
+                const toolResultMessage = toolResults.map(r =>
                     `工具 ${r.toolId}: ${r.result.success ? JSON.stringify(r.result.data) : r.result.error}`
                 ).join('\n');
 
@@ -111,7 +111,7 @@ export class DBGPTAgentService {
         } catch (error) {
             console.error('[DB-GPT Agent] 处理失败:', error);
             callbacks?.onError?.(error instanceof Error ? error.message : '处理失败');
-            
+
             return {
                 content: `处理请求时发生错误: ${error instanceof Error ? error.message : '未知错误'}`,
                 sessionId: sessionId || '',
@@ -125,8 +125,8 @@ export class DBGPTAgentService {
     private async buildSystemPrompt(context?: { module?: string; pathname?: string }): Promise<string> {
         // 获取所有可用工具
         const tools = toolRegistry.getAll();
-        
-        const toolsDescription = tools.map(t => 
+
+        const toolsDescription = tools.map(t =>
             `- ${t.id}: ${t.name} - ${t.description}`
         ).join('\n');
 

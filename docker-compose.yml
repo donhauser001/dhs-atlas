@@ -24,21 +24,22 @@ services:
     # 开发工具需要 root 权限访问 docker.sock
     user: root
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - PORT=3000
       - MONGODB_URI=mongodb://mongodb:27017/donhauser
       - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+      # AI Agent 配置
+      - AGENT_API_URL=http://agent:8000
     ports:
       - "3000:3000"
     depends_on:
       - mongodb
     volumes:
       - backend_uploads:/app/uploads
+      # 开发模式：挂载源代码实现热重载
+      - ./backend/src:/app/src:ro
       # 开发工具: 挂载 docker.sock 和脚本以支持热重载
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./rebuild-frontend.sh:/app/scripts/rebuild-frontend.sh:ro
-      - ./quick-start.sh:/app/scripts/quick-start.sh:ro
-      - ./docker-compose.yml:/app/scripts/docker-compose.yml:ro
     networks:
       - donhauser-network
     healthcheck:
@@ -47,6 +48,44 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # AI Agent 服务 (Python/FastAPI)
+  agent:
+    build:
+      context: ./dhs_atlas_agent
+      dockerfile: Dockerfile
+    container_name: donhauser-agent
+    restart: unless-stopped
+    environment:
+      # MongoDB 配置（使用 Docker 内部网络）
+      - MONGO_URI=mongodb://mongodb:27017/
+      - DATABASE_NAME=donhauser
+      # LLM 配置（局域网 LMStudio）
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:1234}
+      - LLM_MODEL=${LLM_MODEL:-qwen/qwen3-coder-30b}
+      - LLM_API_KEY=${LLM_API_KEY:-lm-studio}
+      # API 配置
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      # 前端地址（CORS）
+      - FRONTEND_URL=http://localhost:3001
+      # 调试模式
+      - DEBUG=false
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongodb
+    networks:
+      - donhauser-network
+    # 添加 host.docker.internal 支持（Linux 需要）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Mongo Express - MongoDB 数据库可视化工具
   mongo-express:
@@ -83,7 +122,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-  # 前端Web服务 (Next.js) - 已移至本地运行以支持热重载
+
+  # 前端Web服务 (Next.js) - 注释掉，本地运行以支持热重载
   # 本地启动命令: cd frontend && npm run dev
   # frontend:
   #   build:
@@ -95,10 +135,12 @@ services:
   #     - "3001:3001"
   #   environment:
   #     - NEXT_PUBLIC_API_URL=http://localhost:3000/api
+  #     - NEXT_PUBLIC_AGENT_API=http://localhost:8000/api/agent
   #     - INTERNAL_API_URL=http://backend:3000
   #     - NODE_ENV=development
   #   depends_on:
   #     - backend
+  #     - agent
   #   networks:
   #     - donhauser-network
   #   healthcheck:
@@ -108,7 +150,7 @@ services:
   #     retries: 3
   #     start_period: 60s
 
-  # 数据卷
+# 数据卷
 volumes:
   mongodb_data:
     driver: local

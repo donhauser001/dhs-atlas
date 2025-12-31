@@ -95,3 +95,4 @@ def list_collections() -> Annotated[List[Dict[str, Any]], Doc("集合列表，�
     
     return result
 
+

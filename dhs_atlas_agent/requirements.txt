@@ -1,7 +1,8 @@
 # DHS-Atlas Agent 依赖
 
-# DB-GPT 核心
-dbgpt>=0.6.0
+# DB-GPT 核心（安装完整 agent 依赖）
+dbgpt[agent]>=0.6.0
+dbgpt-ext>=0.1.0
 
 # Web 框架
 fastapi>=0.100.0
@@ -14,7 +15,26 @@ pymongo>=4.0.0
 # HTTP
 httpx>=0.24.0
 
+# DB-GPT 缺失的依赖
+cloudpickle>=2.0.0
+sqlalchemy>=2.0.0
+sqlparse>=0.5.0
+aiosqlite>=0.19.0
+greenlet>=3.0.0
+requests>=2.0.0
+tiktoken>=0.5.0
+openai>=1.0.0
+jinja2>=3.0.0
+aiofiles>=23.0.0
+cachetools>=5.0.0
+tenacity>=8.0.0
+shortuuid>=1.0.0
+schedule>=1.0.0
+rich>=13.0.0
+prettytable>=3.0.0
+
 # 其他
 python-dotenv>=1.0.0
 typing-extensions>=4.0.0
+
 

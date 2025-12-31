@@ -168,3 +168,4 @@ class ClientModel:
         """统计客户数量"""
         return cls.collection().count_documents(query or {})
 
+

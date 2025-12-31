@@ -580,7 +580,7 @@ async function upgradeAiMaps() {
     try {
       const result = await AiMap.updateOne(
         { mapId: mapData.mapId },
-        { 
+        {
           $set: {
             ...mapData,
             updatedAt: new Date()
@@ -611,24 +611,24 @@ async function upgradeAiMaps() {
   // 验证升级结果
   console.log('\n📋 验证 V2 字段完整性...');
   const allMaps = await AiMap.find({ enabled: true }).toArray();
-  
+
   let v2CompliantCount = 0;
   for (const map of allMaps) {
     const steps = (map as any).steps || [];
-    const hasV2Fields = steps.every((step: any) => 
-      step.name && 
+    const hasV2Fields = steps.every((step: any) =>
+      step.name &&
       (step.toolId || step.condition) && // 有工具ID 或 是条件步骤
       (step.nextStepPrompt || step.order === steps.length) // 有下一步提示 或 是最后一步
     );
-    
+
     if (hasV2Fields) {
       v2CompliantCount++;
     } else {
       console.log(`  ⚠️  不完整: ${(map as any).name} (${(map as any).mapId})`);
     }
   }
-  
-  console.log(`\n📊 V2 合规率: ${v2CompliantCount}/${allMaps.length} (${Math.round(v2CompliantCount/allMaps.length*100)}%)`);
+
+  console.log(`\n📊 V2 合规率: ${v2CompliantCount}/${allMaps.length} (${Math.round(v2CompliantCount / allMaps.length * 100)}%)`);
 
   await mongoose.disconnect();
   console.log('\n🔌 数据库连接已关闭');
@@ -636,4 +636,5 @@ async function upgradeAiMaps() {
 
 // 执行升级
 upgradeAiMaps().catch(console.error);
+
 

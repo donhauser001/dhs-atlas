@@ -110,3 +110,4 @@ class QuotationModel:
         """统计报价单数量"""
         return cls.collection().count_documents(query or {})
 
+

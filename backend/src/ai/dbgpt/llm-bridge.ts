@@ -56,7 +56,7 @@ export async function callDBGPT(
 
     try {
         const response = await client.chatCompletion(dbgptMessages);
-        
+
         console.log('[DB-GPT Bridge] 响应长度:', response.content.length);
         if (response.usage) {
             console.log('[DB-GPT Bridge] Token 使用:', response.usage);
@@ -100,4 +100,5 @@ export async function* callDBGPTStream(
         throw error;
     }
 }
+
 

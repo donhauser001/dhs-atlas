@@ -70,3 +70,4 @@ def get_client_categories() -> Annotated[List[str], Doc("客户分类列表")]:
     """
     return ClientModel.get_categories()
 
+

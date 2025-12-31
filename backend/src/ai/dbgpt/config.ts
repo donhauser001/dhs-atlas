@@ -22,15 +22,15 @@ export function getAIServiceConfig(): AIServiceConfig {
     return {
         // USE_DBGPT=true 启用 DB-GPT/LMStudio 作为 LLM 后端
         useDBGPT: process.env.USE_DBGPT === 'true',
-        
+
         // LLM 服务地址
         // - LMStudio 直连: http://192.168.31.177:1234 (推荐，更简单)
         // - DB-GPT 模式: http://localhost:5670 (需要启动 DB-GPT webserver)
         dbgptBaseUrl: process.env.DBGPT_BASE_URL || 'http://192.168.31.177:1234',
-        
+
         // 使用的模型
         dbgptModel: process.env.DBGPT_MODEL || 'qwen/qwen3-coder-30b',
-        
+
         // 是否使用 DB-GPT 的 Agent 系统（而不仅仅是 LLM）
         // USE_DBGPT_AGENT=true 启用完整的 Agent 替换
         useDBGPTAgent: process.env.USE_DBGPT_AGENT === 'true',

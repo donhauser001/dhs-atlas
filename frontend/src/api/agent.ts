@@ -8,6 +8,9 @@
 
 import api from '@/lib/axios';
 
+// AI Agent API 地址（Python FastAPI 服务）
+const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API || 'http://localhost:8000/api/agent';
+
 // ============ 类型定义 ============
 
 export interface ToolCallRequest {
@@ -278,8 +281,7 @@ export function streamAgentMessage(
 
     // 使用 fetch 而不是 EventSource（因为需要 POST 请求）
     // 深度整合：直接调用 Python Agent API
-    // 如果 Python Agent 未运行，会回退到原来的 TypeScript 后端
-    const streamUrl = 'http://localhost:8000/api/agent/stream';
+    const streamUrl = `${AGENT_API_URL}/stream`;
 
     const fetchStream = async () => {
         try {
